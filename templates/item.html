@@ -40,17 +40,14 @@
         <p class="eyebrow">CATALOG DATA</p>
         <h2 id="stats-title">Item stats</h2>
         {{ item_stats(row) }}
+        {% if screenshot %}<details><summary>Saved item screenshot (latest)</summary><img class="ocr-preview" src="{{ url_for('item_screenshot', item_id=row.item_id) }}" alt="Saved screenshot of {{ row.name }}"></details>{% endif %}
         {% if row.catalog and row.catalog.stats.get('ocr_text') %}<details><summary>Reviewed screenshot text</summary><pre class="ocr-text">{{ row.catalog.stats.ocr_text }}</pre></details>{% endif %}
         <p class="panel-foot">Stats and augment types come from imported data or reviewed screenshots, not the inventory export. Unknown does not mean zero.</p>
       </section>
       <section class="panel detail-panel" aria-labelledby="ocr-title">
         <p class="eyebrow">SCREENSHOT IMPORT</p><h2 id="ocr-title">Read an item screenshot</h2>
-        <p class="detail-context">Crop an in-game item inspection window for this item. Review the OCR and verify the item before saving. Existing catalog data will not be overwritten.</p>
-        <form action="{{ url_for('screenshot_review', upload_id=data.upload.id, row_index=row.index) }}" method="post" enctype="multipart/form-data" class="upload-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <label class="file-label">PNG or JPEG screenshot<input type="file" name="screenshot" accept="image/png,image/jpeg" required></label>
-          <button type="submit">Review screenshot →</button>
-        </form>
+        <p class="detail-context">Select one or more item windows from a screenshot and review each crop separately. Existing catalog data will not be overwritten.</p>
+        <a class="item-link" href="{{ url_for('screenshots', upload_id=data.upload.id) }}">Open screenshot importer →</a>
       </section>
       {% if children %}
       <section class="detail-children" aria-labelledby="children-title">

@@ -1,12 +1,15 @@
 import io
+import html
 import json
 import gzip
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import pymysql
+from PIL import Image
 
 from app import app
 from inventory import parse_inventory
@@ -38,8 +41,17 @@ class Cursor:
             self.result = match.copy() if match else None
         elif query.startswith("SELECT item_id, name FROM lucy_items"):
             self.result = self.state["lucy"].get(values[0])
+        elif query.startswith("SELECT id FROM item_screenshots"):
+            images = self.state["screenshots"].get(values[0], [])
+            self.result = {"id": len(images)} if images else None
+        elif query.startswith("SELECT image_data FROM item_screenshots"):
+            images = self.state["screenshots"].get(values[0], [])
+            self.result = {"image_data": images[-1]} if images else None
         elif query.startswith("SELECT item_id"):
             self.result = list(self.state["items"].values())
+        elif query.startswith("INSERT INTO item_screenshots"):
+            item_id, image_data = values
+            self.state["screenshots"].setdefault(item_id, []).append(image_data)
         elif query.startswith("INSERT INTO item_data"):
             item_id, types, stats = values
             if item_id in self.state["items"]:
@@ -87,7 +99,7 @@ class Connection:
 
 class AppTests(unittest.TestCase):
     def setUp(self):
-        self.state = {"uploads": [], "items": {}, "catalog": {}, "lucy": {}, "commits": 0}
+        self.state = {"uploads": [], "items": {}, "catalog": {}, "lucy": {}, "screenshots": {}, "commits": 0}
         self.patcher = patch("app.connect", side_effect=lambda: Connection(self.state))
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
@@ -273,7 +285,9 @@ class AppTests(unittest.TestCase):
         self.client.post("/upload", data={
             "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
         })
-        with patch("app.recognize_screenshot", return_value=("First aug\nAugmentation type: 7 8\nAC: 42 HP: +100", "png")):
+        raw_text = ("First aug\nAugmentation type: 7 8\nAC: 42 HP: +100\n"
+                    "You mustuse a solvent Class XXI Augmentation Distiller or higher.")
+        with patch("app.recognize_screenshot", return_value=(raw_text, "png")):
             response = self.client.post("/uploads/1/items/1/screenshot", data={
                 "csrf_token": self.token, "screenshot": (io.BytesIO(b"image"), "item.png")
             })
@@ -281,14 +295,22 @@ class AppTests(unittest.TestCase):
         self.assertIn(b'data:image/png;base64,', response.data)
         self.assertIn(b'7|8', response.data)
         self.assertNotIn(11, self.state["items"])
+        match = re.search(r'<textarea name="stats_json"[^>]*>(.*?)</textarea>',
+                          response.get_data(as_text=True), re.DOTALL)
+        self.assertIsNotNone(match)
+        reviewed_stats = html.unescape(match.group(1))
+        self.assertEqual(json.loads(reviewed_stats)["distiller_class"], "XXI")
         response = self.client.post("/uploads/1/items/1/screenshot/save", data={
             "csrf_token": self.token, "confirmed": "yes", "types": "7|8",
-            "stats_json": '{"ac":42,"hp":100}', "raw_text": "First aug\\nAC: 42",
+            "stats_json": reviewed_stats, "raw_text": raw_text,
         }, follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Reviewed screenshot data saved", response.data)
         self.assertEqual(json.loads(self.state["items"][11]["aug_types_json"]), [7, 8])
         self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["ac"], 42)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["distiller_class"], "XXI")
+        self.assertIn(b"DISTILLER CLASS", response.data)
+        self.assertIn(b"XXI", response.data)
 
     def test_screenshot_saving_requires_confirmation_and_preserves_existing(self):
         self.client.post("/upload", data={
@@ -315,6 +337,79 @@ class AppTests(unittest.TestCase):
             }, follow_redirects=True)
         self.assertIn(b"Tesseract not installed", response.data)
         self.assertNotIn(11, self.state["items"])
+
+    def test_multiple_screenshot_crops_are_reviewed_and_saved_separately(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        importer = self.client.get("/uploads/1/screenshots")
+        self.assertEqual(importer.status_code, 200)
+        self.assertIn(b"First aug", importer.data)
+        image = io.BytesIO()
+        Image.new("RGB", (20, 10), "red").save(image, format="PNG")
+        png = image.getvalue()
+        for index, name, item_id, ac in ((1, "First aug", 11, 42), (3, "Second aug", 12, 9)):
+            text = f"{name}\nAugmentation type: 7\nAC: {ac}"
+            with patch("app.recognize_screenshot", return_value=(text, "png")):
+                recognized = self.client.post("/uploads/1/screenshots/recognize", data={
+                    "csrf_token": self.token, "screenshot": (io.BytesIO(png), "crop.png")
+                })
+            self.assertEqual(recognized.status_code, 200)
+            self.assertEqual(recognized.json["stats"], {"ac": ac})
+            saved = self.client.post("/uploads/1/screenshots/save", data={
+                "csrf_token": self.token, "row_index": str(index), "confirmed": "yes", "save_stats": "yes",
+                "stats_json": json.dumps(recognized.json["stats"]), "types": "7", "raw_text": text,
+                "screenshot": (io.BytesIO(png), "crop.png"),
+            })
+            self.assertEqual(saved.status_code, 200)
+            self.assertEqual(json.loads(self.state["items"][item_id]["stats_json"])["ac"], ac)
+            response = self.client.get(f"/items/{item_id}/screenshot")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "image/png")
+            self.assertEqual(Image.open(io.BytesIO(response.data)).size, (20, 10))
+            self.assertIn(f"/items/{item_id}/screenshot".encode(), self.client.get(saved.json["item_url"]).data)
+        self.assertEqual(self.client.get("/items/999/screenshot").status_code, 404)
+
+    def test_screenshot_save_requires_confirmation_and_preserves_catalog(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        self.state["items"][11] = {"item_id": 11, "stats_json": '{"ac":42}', "aug_types_json": "[7]"}
+        image = io.BytesIO()
+        Image.new("RGB", (5, 5), "blue").save(image, format="PNG")
+        png = image.getvalue()
+
+        def save(confirmed, save_stats, content=png, row_index="1"):
+            return self.client.post("/uploads/1/screenshots/save", data={
+                "csrf_token": self.token, "row_index": row_index, "confirmed": confirmed, "save_stats": save_stats,
+                "stats_json": '{"ac":10}', "types": "8", "raw_text": "AC: 10",
+                "screenshot": (io.BytesIO(content), "item.png"),
+            })
+
+        self.assertEqual(save("", "yes").status_code, 400)
+        self.assertEqual(save("yes", "yes", b"bad").status_code, 400)
+        self.assertEqual(save("yes", "yes", row_index="not-a-number").status_code, 400)
+        self.assertEqual(save("yes", "yes").status_code, 409)
+        self.assertEqual(self.state["screenshots"], {})
+        self.assertEqual(save("yes", "").status_code, 200)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"]), {"ac": 42})
+        self.assertEqual(len(self.state["screenshots"][11]), 1)
+        another = io.BytesIO()
+        Image.new("RGB", (4, 3), "red").save(another, format="PNG")
+        self.assertEqual(save("yes", "", another.getvalue()).status_code, 200)
+        self.assertEqual(len(self.state["screenshots"][11]), 2)
+        latest = self.client.get("/items/11/screenshot")
+        self.assertEqual(Image.open(io.BytesIO(latest.data)).size, (4, 3))
+
+    def test_screenshot_api_returns_json_for_oversized_upload(self):
+        previous = app.config["MAX_CONTENT_LENGTH"]
+        app.config["MAX_CONTENT_LENGTH"] = 1024
+        self.addCleanup(app.config.__setitem__, "MAX_CONTENT_LENGTH", previous)
+        response = self.client.post("/uploads/1/screenshots/recognize", data={
+            "csrf_token": self.token, "screenshot": (io.BytesIO(b"x" * 2048), "crop.png")
+        })
+        self.assertEqual(response.status_code, 413)
+        self.assertIn("10 MB", response.json["error"])
 
 
 if __name__ == "__main__":

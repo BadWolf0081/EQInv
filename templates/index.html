@@ -38,6 +38,7 @@
         <div><p class="eyebrow">CURRENT SNAPSHOT</p><h2>{{ data.upload.character_name or "Unknown adventurer" }}{% if data.upload.server_name %} <span>of {{ data.upload.server_name }}</span>{% endif %}</h2><p>{{ data.upload.filename }} · Imported {{ data.upload.uploaded_at }} UTC</p></div>
         <div class="summary-stats"><div><strong>{{ data.equipment|selectattr('row.item_id')|list|length }}</strong><span>GEAR SLOTS</span></div><div><strong>{{ data.rows|selectattr('item_id')|list|length }}</strong><span>ITEM ROWS</span></div><div><strong>{{ data.augments|length }}</strong><span>KNOWN TYPE 7/8</span></div></div>
       </section>
+      <p class="detail-context"><a class="item-link" href="{{ url_for('screenshots', upload_id=data.upload.id) }}">Import item screenshots →</a></p>
       <div class="rule"><span>✦</span></div>
       <section aria-labelledby="equipment-title">
         <div class="section-heading"><div><p class="eyebrow">READY FOR ADVENTURE</p><h2 id="equipment-title">Equipped gear</h2></div><p>Each item's augments appear beneath it.<br>Repeated slots retain their export order.</p></div>

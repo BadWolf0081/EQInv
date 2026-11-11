@@ -62,6 +62,7 @@ This Augmentation fits in slot types: 3 (General: Spell Effect)
             "item_flags": "Lore, No Trade, Augmentation, Prestige",
             "equip_slots": "Ear Head Face Neck Shoulders Arms Back Wrist Range Hands Primary "
                            "Secondary Fingers Chest Legs Feet Waist",
+            "distiller_class": "XXI",
         })
 
     def test_extract_stats_and_types_without_inventing_values(self):
@@ -71,6 +72,22 @@ This Augmentation fits in slot types: 3 (General: Spell Effect)
         self.assertEqual(types, [7, 8])
         self.assertEqual(stats, {"ac": 113, "str": "+22+16", "hp": 1600, "mana": 1600, "endurance": 1600})
         self.assertEqual(extract_candidates("Slot 1, Type 8\nAC: unclear"), ({}, []))
+
+    def test_distiller_class_extraction_requires_complete_classed_distiller(self):
+        examples = [
+            "You mustuse a solvent Class XXI Augmentation Distiller"
+            "You mustuse a solvent Class XXI Augmentation Distiller",
+            "You must use a solvent Class XXI\nAugmentation Distiller or higher, "
+            "or use a Perfected Augmentation Distiller.",
+            "solvent class xxi augmentation distiller",
+        ]
+        for text in examples:
+            with self.subTest(text=text):
+                self.assertEqual(extract_candidates(text), ({"distiller_class": "XXI"}, []))
+        for text in ("Perfected Augmentation Distiller", "solvent Class Augmentation Distiller",
+                     "solvent Class ABC Augmentation Distiller", "Class XXI Augmentation Distiller"):
+            with self.subTest(text=text):
+                self.assertEqual(extract_candidates(text), ({}, []))
 
     def test_review_rejects_bad_values(self):
         for stats, types, raw in [('[]', '7', 'x'), ('{"ac":"42"}', '7', 'x'),

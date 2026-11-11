@@ -1,6 +1,7 @@
 import csv
 import base64
 import gzip
+import io
 import json
 import logging
 import os
@@ -9,12 +10,12 @@ from urllib.parse import urlencode
 
 import click
 import pymysql
-from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
 from inventory import EQUIPMENT, parse_inventory, parse_item_data, parse_lucy_items
-from screenshot_ocr import extract_candidates, recognize_screenshot, validate_review
+from screenshot_ocr import extract_candidates, load_screenshot, recognize_screenshot, validate_review
 
 app = Flask(__name__)
 app.config.update(MAX_CONTENT_LENGTH=10 * 1024 * 1024,
@@ -182,6 +183,9 @@ def item_detail(upload_id, row_index):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT item_id, name FROM lucy_items WHERE item_id = %s", (row["item_id"],))
                 lucy = cursor.fetchone()
+                cursor.execute("SELECT id FROM item_screenshots WHERE item_id = %s ORDER BY id DESC LIMIT 1",
+                               (row["item_id"],))
+                screenshot = cursor.fetchone()
     except (pymysql.MySQLError, OSError, ValueError):
         app.logger.exception("Unable to load item details")
         return render_template("index.html", data=None, db_error=True), 503
@@ -189,7 +193,107 @@ def item_detail(upload_id, row_index):
     parent = data["rows"][row["parent"]] if row["parent"] is not None else None
     allakhazam_search = "https://everquest.allakhazam.com/db/search?" + urlencode({"q": row["name"]})
     return render_template("item.html", data=data, row=row, children=children, parent=parent,
-                           lucy=lucy, allakhazam_search=allakhazam_search)
+                           lucy=lucy, screenshot=screenshot, allakhazam_search=allakhazam_search)
+
+
+@app.route("/items/<int:item_id>/screenshot")
+def item_screenshot(item_id):
+    try:
+        with connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT image_data FROM item_screenshots WHERE item_id = %s ORDER BY id DESC LIMIT 1",
+                               (item_id,))
+                image = cursor.fetchone()
+        if not image:
+            abort(404)
+        response = Response(image["image_data"], mimetype="image/png")
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Unable to load item screenshot")
+        return "Unable to load item screenshot. Check the server logs.", 503
+
+
+@app.route("/uploads/<int:upload_id>/screenshots")
+def screenshots(upload_id):
+    try:
+        data = dashboard(upload_id)
+        if data is None:
+            abort(404)
+        items = {}
+        for row in data["rows"]:
+            if row["item_id"] and row["item_id"] not in items:
+                items[row["item_id"]] = {"index": row["index"], "id": row["item_id"], "name": row["name"]}
+        return render_template("screenshots.html", upload_id=upload_id, items=list(items.values()))
+    except (pymysql.MySQLError, OSError, ValueError):
+        app.logger.exception("Unable to load screenshot importer")
+        return "Unable to load inventory. Check the server logs.", 503
+
+
+@app.route("/uploads/<int:upload_id>/screenshots/recognize", methods=["POST"])
+def screenshots_recognize(upload_id):
+    try:
+        if dashboard(upload_id) is None:
+            abort(404)
+        image = request.files.get("screenshot")
+        if not image or not image.filename:
+            raise ValueError("Choose an item window to recognize.")
+        text, _ = recognize_screenshot(image.read())
+        stats, types = extract_candidates(text)
+        return jsonify(raw_text=text, stats=stats, types=types)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except RuntimeError as exc:
+        app.logger.error("Screenshot OCR failed: %s", exc)
+        return jsonify(error=str(exc)), 500
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Screenshot recognition failed")
+        return jsonify(error="Unable to process screenshot. Check the server logs."), 503
+
+
+@app.route("/uploads/<int:upload_id>/screenshots/save", methods=["POST"])
+def screenshots_save(upload_id):
+    try:
+        if request.form.get("confirmed") != "yes":
+            raise ValueError("Confirm the item, crop, and recognized values before saving.")
+        index_text = request.form.get("row_index", "")
+        if not index_text.isascii() or not index_text.isdigit():
+            raise ValueError("Select an item from the inventory.")
+        row = screenshot_item(upload_id, int(index_text))
+        image_file = request.files.get("screenshot")
+        if not image_file or not image_file.filename:
+            raise ValueError("Choose an item window to save.")
+        image, _ = load_screenshot(image_file.read())
+        output = io.BytesIO()
+        image.save(output, format="PNG")
+        save_stats = request.form.get("save_stats") == "yes"
+        if save_stats:
+            stats, types = validate_review(request.form.get("stats_json", ""),
+                                           request.form.get("types", ""),
+                                           request.form.get("raw_text", ""))
+        with connect() as connection:
+            with connection.cursor() as cursor:
+                if save_stats:
+                    cursor.execute(
+                        "INSERT INTO item_data (item_id, aug_types_json, stats_json) VALUES (%s, %s, %s)",
+                        (row["item_id"], json.dumps(types), json.dumps(stats, ensure_ascii=False)),
+                    )
+                cursor.execute("INSERT INTO item_screenshots (item_id, image_data) VALUES (%s, %s)",
+                               (row["item_id"], output.getvalue()))
+            connection.commit()
+        return jsonify(message="Item screenshot saved.", item_url=url_for(
+            "item_detail", upload_id=upload_id, row_index=row["index"]))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except pymysql.err.IntegrityError as exc:
+        if exc.args and exc.args[0] == 1062:
+            return jsonify(error="This item already has catalog data. Uncheck the stats option to save only the screenshot."), 409
+        app.logger.exception("Unable to save item screenshot")
+        return jsonify(error="Unable to save screenshot. Check the server logs."), 503
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Unable to save item screenshot")
+        return jsonify(error="Unable to save screenshot. Check the server logs."), 503
 
 
 def screenshot_item(upload_id, row_index):
@@ -304,6 +408,8 @@ def upload_item_data():
 
 @app.errorhandler(RequestEntityTooLarge)
 def too_large(_error):
+    if request.endpoint in ("screenshots_recognize", "screenshots_save"):
+        return jsonify(error="Upload exceeds the 10 MB limit; select a smaller crop."), 413
     flash("Upload exceeds the 10 MB limit.", "error")
     return redirect(url_for("index"))
 

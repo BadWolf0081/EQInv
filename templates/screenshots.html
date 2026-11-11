@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Import screenshots · Adventurer's Ledger</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='screenshots.js') }}" defer></script>
+</head>
+<body><div class="page"><main class="item-detail">
+  <a class="item-link back-link" href="{{ url_for('index') }}">← Back to inventory</a>
+  <p class="eyebrow">SCREENSHOT IMPORT</p>
+  <h1>Import item windows</h1>
+  <p class="detail-context">Choose one screenshot, then draw a rectangle around a single complete item window. Recognize, verify, and save that item; repeat for each other window without choosing the file again. Crops are saved on the server and visible to anyone with access to this site.</p>
+  <p class="detail-context">The full screenshot stays in your browser. Avoid including private information in your crop. Window boundaries are selected manually, not detected automatically.</p>
+  <noscript><div class="notice error">JavaScript is required to select and review screenshot crops.</div></noscript>
+  <div id="importer" data-recognize-url="{{ url_for('screenshots_recognize', upload_id=upload_id) }}" data-save-url="{{ url_for('screenshots_save', upload_id=upload_id) }}" data-csrf="{{ csrf_token }}">
+    <label class="file-label">PNG or JPEG screenshot <input id="screenshot-file" type="file" accept="image/png,image/jpeg"></label>
+    <div id="crop-area" hidden>
+      <p>Drag around one item window, or enter its pixel coordinates below.</p>
+      <div class="crop-image" id="crop-image"><img id="source-image" alt="Screenshot; select one item window"><span id="selection" hidden></span></div>
+      <div class="crop-coordinates">
+        <label>Left <input id="crop-x" type="number" min="0"></label>
+        <label>Top <input id="crop-y" type="number" min="0"></label>
+        <label>Width <input id="crop-width" type="number" min="1"></label>
+        <label>Height <input id="crop-height" type="number" min="1"></label>
+      </div>
+      <button id="recognize" type="button">Recognize selected window</button>
+    </div>
+    <p id="status" class="notice" role="status" aria-live="polite" hidden></p>
+    <form id="review" class="panel detail-panel ocr-form" hidden>
+      <h2>Review one item</h2>
+      <img id="crop-preview" class="ocr-preview" alt="Selected item window crop">
+      <label>Inventory item <span id="match-help">Select the item that matches this crop.</span>
+        <select id="item-select" required><option value="">Select an item</option>{% for item in items %}<option value="{{ item.index }}">{{ item.name }} (#{{ item.id }})</option>{% endfor %}</select>
+      </label>
+      <label>Augmentation types <span>Numbers separated by |; leave blank if unknown.</span><input id="types" type="text"></label>
+      <label>Stats (JSON) <span>Review every field. ac, hp, mana, and endurance must be integers; distiller_class is a Roman numeral string.</span><textarea id="stats" rows="10"></textarea></label>
+      <label>Recognized text <span>Corrected text is saved with the stats if you select that option.</span><textarea id="raw-text" rows="12"></textarea></label>
+      <label class="confirmation"><input id="save-stats" type="checkbox" checked> Save reviewed stats and augment types if this item has no catalog data</label>
+      <p class="detail-context">Existing catalog data is never overwritten. Uncheck the stats option to save only an image for an item with existing data.</p>
+      <label class="confirmation"><input id="confirmed" type="checkbox" required> I verified this crop, item, and any values being saved.</label>
+      <button type="submit">Save this item →</button>
+    </form>
+  </div>
+  <script id="inventory-items" type="application/json">{{ items|tojson }}</script>
+</main></div></body></html>

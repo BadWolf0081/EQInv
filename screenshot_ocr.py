@@ -25,6 +25,9 @@ SKILL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SIZE_PATTERN = re.compile(r"\bSize[ \t]*:[ \t]*([A-Za-z]+)\b", re.IGNORECASE)
+DISTILLER_PATTERN = re.compile(
+    r"\bsolvent\s+Class\s+([IVXLCDM]+)\s+Augmentation\s+Distiller\b", re.IGNORECASE,
+)
 FLAGS_PATTERN = re.compile(
     r"\b((?:Lore|No Trade|No Drop|Augmentation|Prestige|Attuneable|Heirloom)"
     r"(?:[ \t]*,[ \t]*(?:Lore|No Trade|No Drop|Augmentation|Prestige|Attuneable|Heirloom))+)\b",
@@ -58,6 +61,9 @@ def extract_candidates(text):
     size = SIZE_PATTERN.search(text)
     if size:
         stats["size"] = size.group(1).upper()
+    distiller = DISTILLER_PATTERN.search(text)
+    if distiller:
+        stats["distiller_class"] = distiller.group(1).upper()
     flags = FLAGS_PATTERN.search(text)
     if flags:
         stats["item_flags"] = flags.group(1).strip()
@@ -72,7 +78,7 @@ def extract_candidates(text):
     return stats, types
 
 
-def recognize_screenshot(data):
+def load_screenshot(data):
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
@@ -82,13 +88,18 @@ def recognize_screenshot(data):
                 if original.width * original.height > MAX_PIXELS:
                     raise ValueError("Screenshot exceeds the 20 megapixel limit.")
                 original.load()
-                image = ImageOps.autocontrast(original.convert("L"))
-                if original.width * original.height * 4 <= MAX_PIXELS:
-                    image = image.resize((original.width * 2, original.height * 2))
-                output = io.BytesIO()
-                image.save(output, format="PNG")
+                return original.convert("RGB"), original.format.lower()
     except (UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning, OSError) as exc:
         raise ValueError("Invalid or oversized screenshot; use a PNG or JPEG image.") from exc
+
+
+def recognize_screenshot(data):
+    original, image_format = load_screenshot(data)
+    image = ImageOps.autocontrast(original.convert("L"))
+    if original.width * original.height * 4 <= MAX_PIXELS:
+        image = image.resize((original.width * 2, original.height * 2))
+    output = io.BytesIO()
+    image.save(output, format="PNG")
     try:
         result = subprocess.run(
             ["tesseract", "stdin", "stdout", "--psm", "6"],
@@ -105,7 +116,7 @@ def recognize_screenshot(data):
     text = result.stdout.decode("utf-8", errors="replace").strip()
     if not text:
         raise ValueError("No text was recognized. Crop the item window and try a clearer screenshot.")
-    return text, original.format.lower()
+    return text, image_format
 
 
 def validate_review(stats_text, types_text, raw_text):
