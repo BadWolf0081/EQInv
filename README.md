@@ -85,6 +85,8 @@ An uncompressed `itemlist.txt` works too. Importing is transactional and can be 
 
 Item detail pages show a link to Lucy when that item ID appears in the imported list. The link opens Lucy in your browser; the app does not fetch or scrape the page or its images. The list contains only IDs, names, and links—not item images, stats, or augment types—so it cannot populate comparisons by itself. Use the manual item data import below for those values. Check the source's terms and obtain permission before redistributing its data.
 
+Lucy links are constructed from the item ID rather than stored as full URLs. Each item detail page also provides an Allakhazam name-search link, even when the item is absent from the Lucy list. Allakhazam uses different page IDs and names can be duplicated, so check the item ID in the search results before selecting an entry. Neither link imports stats automatically.
+
 ## Import item data
 
 Upload a UTF-8 CSV using the item data form. `id` and `aug_types` headers are required; type numbers are separated by `|`. `ac`, `hp`, `mana`, and `endurance` must be whole numbers when provided. Any other columns are preserved and displayed as text for matching items. Blank values mean unknown. Example (illustrative values, not real item data):

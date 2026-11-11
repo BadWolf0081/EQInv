@@ -225,6 +225,16 @@ class AppTests(unittest.TestCase):
         self.assertIn(b'opens an external site', response.data)
         self.assertNotIn(b'lucy.allakhazam.com', self.client.get("/uploads/1/items/1").data)
 
+    def test_allakhazam_search_uses_encoded_item_name(self):
+        data = b"Location\tName\tID\tCount\tSlots\nEar\tSmith's Ring & Charm\t123\t1\t6\n"
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(data), "Example_Test-Inventory.txt")
+        })
+        response = self.client.get("/uploads/1/items/0")
+        self.assertIn(b'https://everquest.allakhazam.com/db/search?q=Smith%27s+Ring+%26+Charm', response.data)
+        self.assertIn(b'check the item ID in the results', response.data)
+        self.assertNotIn(b'lucy.allakhazam.com', response.data)
+
     def test_import_lucy_command_batches_and_preserves_item_stats(self):
         source = "id,name,lucylink\n" + "".join(
             f'{i},Item {i},http://lucy.allakhazam.com/item.html?id={i}\n'

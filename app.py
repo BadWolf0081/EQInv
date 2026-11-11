@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import secrets
+from urllib.parse import urlencode
 
 import click
 import pymysql
@@ -184,7 +185,9 @@ def item_detail(upload_id, row_index):
         return render_template("index.html", data=None, db_error=True), 503
     children = [child for child in data["rows"] if child["parent"] == row_index]
     parent = data["rows"][row["parent"]] if row["parent"] is not None else None
-    return render_template("item.html", data=data, row=row, children=children, parent=parent, lucy=lucy)
+    allakhazam_search = "https://everquest.allakhazam.com/db/search?" + urlencode({"q": row["name"]})
+    return render_template("item.html", data=data, row=row, children=children, parent=parent,
+                           lucy=lucy, allakhazam_search=allakhazam_search)
 
 
 @app.route("/upload", methods=["POST"])
