@@ -64,6 +64,8 @@ class Cursor:
         elif query.startswith("SELECT image_data FROM item_icons"):
             image = self.state["icons"].get(values[0])
             self.result = {"image_data": image} if image else None
+        elif query.startswith("SELECT item_id, aug_types_json, stats_json FROM item_data WHERE item_id = %s FOR UPDATE"):
+            self.result = self.state["items"].get(values[0])
         elif query.startswith("SELECT item_id"):
             self.result = list(self.state["items"].values())
         elif query.startswith("INSERT INTO item_icons"):
@@ -79,6 +81,9 @@ class Cursor:
             item_id, types, stats = values
             if item_id in self.state["items"]:
                 raise pymysql.err.IntegrityError(1062, "duplicate item")
+            self.state["items"][item_id] = {"item_id": item_id, "aug_types_json": types, "stats_json": stats}
+        elif query.startswith("UPDATE item_data SET"):
+            types, stats, item_id = values
             self.state["items"][item_id] = {"item_id": item_id, "aug_types_json": types, "stats_json": stats}
         else:
             raise AssertionError(query)
@@ -290,6 +295,8 @@ class AppTests(unittest.TestCase):
         self.assertIn("<dt>MANA</dt><dd>270</dd>", self.client.get("/uploads/1/items/0").get_data(as_text=True))
         observation["augments_json"] = json.dumps([{"item_id": 11, "socket_type": 14}])
         self.assertIn("type 14 purity", self.client.get("/uploads/1/items/0").get_data(as_text=True))
+        observation["augments_json"] = json.dumps([{"item_id": 11, "socket_type": 13}])
+        self.assertIn("type 13 or type 14 purity", self.client.get("/uploads/1/items/0").get_data(as_text=True))
 
     def test_socket_specific_previews_and_ornament_warning(self):
         export = (b"Location\tName\tID\tCount\tSlots\n"
@@ -311,6 +318,61 @@ class AppTests(unittest.TestCase):
         self.assertIn("Purity 75", preview)
         self.assertIn("Ornament installed", preview)
         self.assertIn("ornamented appearance", self.client.get("/uploads/1/items/0").get_data(as_text=True))
+
+    def test_screenshot_catalog_update_confirmation_and_concurrent_change(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        self.state["items"][11] = {"item_id": 11, "aug_types_json": "[13]",
+                                   "stats_json": '{"purity":25,"hp":100,"mana":200}'}
+        image = io.BytesIO()
+        Image.new("RGB", (20, 10), "red").save(image, format="PNG")
+
+        def save(stats, token=""):
+            return self.client.post("/uploads/1/screenshots/save", data={
+                "csrf_token": self.token, "row_index": "1", "confirmed": "yes", "save_stats": "yes",
+                "stats_json": json.dumps(stats), "types": "13", "raw_text": "Purity: 30",
+                "overwrite_token": token, "screenshot": (io.BytesIO(image.getvalue()), "item.png"),
+            })
+
+        response = save({"purity": 30})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["conflict"]["decision"], "confirm_merge")
+        self.assertNotIn(11, self.state["screenshots"])
+        token = response.json["conflict"]["token"]
+        response = save({"purity": 30}, token)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["hp"], 100)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["purity"], 30)
+        response = save({"purity": 31, "hp": 100, "mana": 200})
+        self.assertEqual(response.json["conflict"]["decision"], "confirm_replace")
+        stale = response.json["conflict"]["token"]
+        self.state["items"][11]["stats_json"] = '{"purity":32,"hp":100,"mana":200}'
+        self.assertEqual(save({"purity": 31, "hp": 100, "mana": 200}, stale).status_code, 409)
+        self.state["items"][11]["stats_json"] = '{"purity":32}'
+        self.assertEqual(save({"purity": 31, "hp": 100, "mana": 200}, stale).status_code, 409)
+        self.state["items"][11]["stats_json"] = '{"purity":32,"hp":100,"mana":200}'
+        response = save({"purity": 33, "hp": 100, "mana": 200, "ac": 5})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["purity"], 33)
+
+    def test_type_13_purity_preview(self):
+        parsed = parse_inventory(EXPORT, "Example_Test-Inventory.txt")
+        self.state["uploads"].append({"id": 1, "filename": parsed["filename"], "character_name": parsed["character"],
+                                      "server_name": parsed["server"], "uploaded_at": "2026-01-01",
+                                      "rows_json": json.dumps(parsed["rows"])})
+        self.state["items"][1] = {"item_id": 1, "aug_types_json": "[]", "stats_json": '{"socket_1_type":13}'}
+        self.state["items"][11] = {"item_id": 11, "aug_types_json": "[13]", "stats_json": '{"purity":75}'}
+        preview = self.client.get("/").get_data(as_text=True).split('<template id="augment-preview-0">')[1].split('</template>')[0]
+        self.assertIn("Socket type 13", preview)
+        self.assertIn("Purity 75", preview)
+        for socket_type in (13, 14):
+            self.state["items"][1]["stats_json"] = json.dumps({"socket_1_type": socket_type})
+            for value, expected in ((0, "Purity 0"), (None, "Purity Unknown")):
+                self.state["items"][11]["stats_json"] = json.dumps({} if value is None else {"purity": value})
+                preview = self.client.get("/").get_data(as_text=True).split(
+                    '<template id="augment-preview-0">')[1].split('</template>')[0]
+                self.assertIn(expected, preview)
 
     def test_rejects_malformed_upload_without_database_write(self):
         response = self.client.post("/upload", data={"csrf_token": self.token, "inventory": (io.BytesIO(b"invalid"), "bad.txt")},
@@ -509,8 +571,14 @@ class AppTests(unittest.TestCase):
         self.client.post("/uploads/1/items/1/screenshot/save", data=payload)
         payload["stats_json"] = '{"ac":10}'
         response = self.client.post("/uploads/1/items/1/screenshot/save", data=payload, follow_redirects=True)
-        self.assertIn(b"did not overwrite", response.data)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn(b"Confirm replacing the existing record", response.data)
         self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["ac"], 42)
+        token = re.search(r'name="overwrite_token" value="([^"]+)"', response.get_data(as_text=True)).group(1)
+        payload["overwrite_token"] = token
+        response = self.client.post("/uploads/1/items/1/screenshot/save", data=payload)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["ac"], 10)
 
     def test_screenshot_ocr_errors_are_visible(self):
         self.client.post("/upload", data={

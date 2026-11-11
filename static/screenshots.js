@@ -27,6 +27,10 @@
   const observationPanel = document.getElementById("observation-panel");
   const observationSlots = document.getElementById("observation-slots");
   const verifyObservation = document.getElementById("verify-observation");
+  const overwritePrompt = document.getElementById("overwrite-prompt");
+  const overwriteMessage = document.getElementById("overwrite-message");
+  const overwriteChanges = document.getElementById("overwrite-changes");
+  let overwriteToken = "";
   let sourceUrl = null;
   let previewUrl = null;
   let crop = null;
@@ -44,6 +48,8 @@
     crop = null;
     confirmed.checked = false;
     verifyObservation.checked = false;
+    overwriteToken = "";
+    overwritePrompt.hidden = true;
     observationPanel.hidden = true;
     iconSelector.dispatchEvent(new Event("clear-icon"));
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -146,7 +152,11 @@
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) throw new Error("Server returned an unexpected response. Check the server logs.");
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Request failed.");
+    if (!response.ok) {
+      const error = new Error(result.error || "Request failed.");
+      error.conflict = result.conflict;
+      throw error;
+    }
     return result;
   }
 
@@ -179,6 +189,17 @@
     }
   }
   itemSelect.addEventListener("change", updateObservation);
+  review.addEventListener("input", () => { overwriteToken = ""; overwritePrompt.hidden = true; });
+  document.getElementById("overwrite-accept").addEventListener("click", () => {
+    overwritePrompt.hidden = true;
+    review.requestSubmit();
+  });
+  document.getElementById("overwrite-decline").addEventListener("click", () => {
+    overwriteToken = "";
+    overwritePrompt.hidden = true;
+    saveStats.checked = false;
+    message("Existing stats will be kept. Save again to store the screenshot.");
+  });
 
   recognize.addEventListener("click", async () => {
     clearReview();
@@ -260,6 +281,7 @@
       form.append("screenshot", crop, "item.png");
       form.append("confirmed", "yes");
       if (saveStats.checked) form.append("save_stats", "yes");
+      if (overwriteToken) form.append("overwrite_token", overwriteToken);
       if (verifyObservation.checked) form.append("verify_observation", "yes");
       form.append("stats_json", stats.value);
       form.append("types", types.value);
@@ -272,8 +294,23 @@
       message(`${result.message} Select the next window, or open the item from the inventory.`);
     } catch (error) {
       message(error.message, true);
+      if (error.conflict) {
+        overwriteToken = error.conflict.token;
+        const action = error.conflict.decision === "confirm_merge"
+          ? "Update conflicting values while preserving omitted fields"
+          : "Replace the existing record";
+        overwriteMessage.textContent = `${action}? Existing: ${error.conflict.old_count} populated stats; screenshot: ${error.conflict.new_count}.`;
+        overwriteChanges.replaceChildren();
+        for (const change of error.conflict.changes) {
+          const item = document.createElement("li");
+          item.textContent = `${change.field}: ${change.old == null ? "(missing)" : JSON.stringify(change.old)} → ${change.new == null ? "(missing)" : JSON.stringify(change.new)}`;
+          overwriteChanges.appendChild(item);
+        }
+        overwritePrompt.hidden = false;
+      }
     } finally {
       setBusy(false);
+      if (!overwritePrompt.hidden) document.getElementById("overwrite-accept").focus();
     }
   });
 })();

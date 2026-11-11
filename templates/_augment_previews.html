@@ -14,7 +14,7 @@
           {% if entry.summary.slot_type is not none %}<small>Socket type {{ entry.summary.slot_type }}</small><br>{% endif %}
           {% if entry.summary.slot_type == 3 %}
             {% if entry.summary.skill_mod %}Skill mod: {{ entry.summary.skill_mod }}{% else %}Special effect not recorded{% endif %}
-          {% elif entry.summary.slot_type == 14 %}
+          {% elif entry.summary.purity_type %}
             Purity {{ entry.summary.purity if entry.summary.purity is not none else 'Unknown' }} · Power-source effects vary
           {% elif entry.summary.slot_type == 22 %}
             Ornamentation · Item appearance may differ

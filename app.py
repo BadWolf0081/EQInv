@@ -20,6 +20,7 @@ from icon_detection import automatic_icon
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
 from item_matching import suggest_item_names
 from screenshot_ocr import extract_candidates, load_screenshot, recognize_screenshot, validate_review
+from screenshot_updates import confirmation_token, describe_changes, stat_count, update_decision
 from socket_types import socket_type
 
 app = Flask(__name__)
@@ -266,7 +267,7 @@ def item_detail(upload_id, row_index):
     base = None
     if observation:
         augments = json.loads(observation["augments_json"])
-        blocked = any(aug["socket_type"] in (None, 14) for aug in augments)
+        blocked = any(aug["socket_type"] in (None, 13, 14) for aug in augments)
         catalogs = {child["item_id"]: child["catalog"] for child in children if child["item_id"]}
         base = {
             "blocked": blocked,
@@ -353,6 +354,29 @@ def store_icon(cursor, item_id, icon):
         "ON DUPLICATE KEY UPDATE image_data=VALUES(image_data)",
         (item_id, icon),
     )
+
+
+def update_screenshot_catalog(cursor, item_id, stats, types, confirmation):
+    cursor.execute("SELECT item_id, aug_types_json, stats_json FROM item_data WHERE item_id = %s FOR UPDATE",
+                   (item_id,))
+    existing = cursor.fetchone()
+    if not existing:
+        cursor.execute("INSERT INTO item_data (item_id, aug_types_json, stats_json) VALUES (%s, %s, %s)",
+                       (item_id, json.dumps(types), json.dumps(stats, ensure_ascii=False)))
+        return None
+    old_stats = json.loads(existing["stats_json"])
+    old_types = json.loads(existing["aug_types_json"])
+    decision, updated_stats, updated_types = update_decision(old_stats, old_types, stats, types)
+    token = confirmation_token(old_stats, old_types, stats, types)
+    token_matches = confirmation.isascii() and len(confirmation) == len(token) and secrets.compare_digest(token, confirmation)
+    if (decision.startswith("confirm_") or confirmation) and not token_matches:
+        prompt_decision = decision if decision.startswith("confirm_") else "confirm_" + decision
+        return {"token": token, "decision": prompt_decision, "old_count": stat_count(old_stats),
+                "new_count": stat_count(stats),
+                "changes": describe_changes(old_stats, old_types, updated_stats, updated_types)}
+    cursor.execute("UPDATE item_data SET aug_types_json = %s, stats_json = %s WHERE item_id = %s",
+                   (json.dumps(updated_types), json.dumps(updated_stats, ensure_ascii=False), item_id))
+    return None
 
 
 @app.route("/uploads/<int:upload_id>/items/<int:row_index>/icon", methods=["GET", "POST"])
@@ -484,10 +508,11 @@ def screenshots_save(upload_id):
         with connect() as connection:
             with connection.cursor() as cursor:
                 if save_stats:
-                    cursor.execute(
-                        "INSERT INTO item_data (item_id, aug_types_json, stats_json) VALUES (%s, %s, %s)",
-                        (row["item_id"], json.dumps(types), json.dumps(stats, ensure_ascii=False)),
-                    )
+                    conflict = update_screenshot_catalog(cursor, row["item_id"], stats, types,
+                                                         request.form.get("overwrite_token", ""))
+                    if conflict:
+                        return jsonify(error="Existing item stats require confirmation before updating.",
+                                       conflict=conflict), 409
                 cursor.execute("INSERT INTO item_screenshots (item_id, image_data) VALUES (%s, %s)",
                                (row["item_id"], output.getvalue()))
                 if verify_observation:
@@ -506,7 +531,7 @@ def screenshots_save(upload_id):
         return jsonify(error=str(exc)), 400
     except pymysql.err.IntegrityError as exc:
         if exc.args and exc.args[0] == 1062:
-            return jsonify(error="This item already has catalog data. Uncheck the stats option to save only the screenshot."), 409
+            return jsonify(error="Item data changed during the save. Retry to compare the latest values."), 409
         app.logger.exception("Unable to save item screenshot")
         return jsonify(error="Unable to save screenshot. Check the server logs."), 503
     except (pymysql.MySQLError, OSError):
@@ -525,9 +550,6 @@ def screenshot_item(upload_id, row_index):
 def screenshot_review(upload_id, row_index):
     try:
         row = screenshot_item(upload_id, row_index)
-        if row["catalog"]:
-            flash("This item already has catalog data; screenshot import will not overwrite it.", "error")
-            return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
         image = request.files.get("screenshot")
         if not image or not image.filename:
             raise ValueError("Choose a PNG or JPEG screenshot.")
@@ -566,16 +588,19 @@ def screenshot_save(upload_id, row_index):
         stats, types = validate_review(stats_json, types_text, raw_text)
         with connect() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO item_data (item_id, aug_types_json, stats_json) VALUES (%s, %s, %s)",
-                    (row["item_id"], json.dumps(types), json.dumps(stats, ensure_ascii=False)),
-                )
+                conflict = update_screenshot_catalog(cursor, row["item_id"], stats, types,
+                                                     request.form.get("overwrite_token", ""))
+                if conflict:
+                    return render_template("screenshot_review.html", row=row, upload_id=upload_id,
+                                           row_index=row_index, image=None, raw_text=raw_text,
+                                           stats_json=stats_json, types_text=types_text, error=None,
+                                           conflict=conflict), 409
             connection.commit()
         flash("Reviewed screenshot data saved.", "success")
         return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
     except pymysql.err.IntegrityError as exc:
         if exc.args and exc.args[0] == 1062:
-            flash("This item already has catalog data; screenshot import did not overwrite it.", "error")
+            flash("Item data changed during the save. Retry to compare the latest values.", "error")
         else:
             app.logger.exception("Unable to save reviewed screenshot")
             flash("Database error: screenshot data was not saved. Check the server logs.", "error")

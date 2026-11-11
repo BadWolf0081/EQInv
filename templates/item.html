@@ -53,7 +53,7 @@
         {% if not base %}
           <p>Not calculated: no screenshot has been verified against this inventory item's installed augments.</p>
         {% elif base.blocked %}
-          <p>Not calculated: an installed augment has an unknown socket type or is a type 14 purity augment. Purity and power-source effects cannot be removed by simple subtraction.</p>
+          <p>Not calculated: an installed augment has an unknown socket type or is a type 13 or type 14 purity augment. Purity and power-source effects cannot be removed by simple subtraction.</p>
         {% else %}
           <p>Recorded values minus known augment contributions. This does not account for power-source or other non-augment effects.</p>
           <dl class="details-list">{% for key, value in base['values'].items() %}<div><dt>{{ key|replace('_', ' ')|upper }}</dt><dd>{{ value if value is not none else 'Unknown — augment contribution missing' }}</dd></div>{% else %}<div><dt>Recorded numeric stats</dt><dd>None</dd></div>{% endfor %}</dl>
@@ -63,7 +63,7 @@
       </section>
       <section class="panel detail-panel" aria-labelledby="ocr-title">
         <p class="eyebrow">SCREENSHOT IMPORT</p><h2 id="ocr-title">Read an item screenshot</h2>
-        <p class="detail-context">Select one or more item windows from a screenshot and review each crop separately. Existing catalog data will not be overwritten.</p>
+        <p class="detail-context">Select and review each item window separately. More complete screenshots replace existing catalog data; equal or conflicting less-complete updates require confirmation.</p>
         <a class="item-link" href="{{ url_for('screenshots', upload_id=data.upload.id) }}">Open screenshot importer →</a>
       </section>
       {% if children %}

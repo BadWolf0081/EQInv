@@ -41,8 +41,14 @@
       <p id="distiller-warning" class="notice error" role="alert" hidden></p>
       <label>Stats (JSON) <span>Review every field. Base and heroic attributes are separate, e.g. "str": 64 and "heroic_str": 89. Item sockets use numeric fields such as "socket_1_type": 3. ac, hp, mana, and endurance must be integers; distiller_class must be I–XXX or "Perfected only".</span><textarea id="stats" rows="10"></textarea></label>
       <label>Recognized text <span>Corrected text is saved with the stats if you select that option.</span><textarea id="raw-text" rows="12"></textarea></label>
-      <label class="confirmation"><input id="save-stats" type="checkbox" checked> Save reviewed stats and augment types if this item has no catalog data</label>
-      <p class="detail-context">Existing catalog data is never overwritten. Uncheck the stats option to save only an image for an item with existing data.</p>
+      <label class="confirmation"><input id="save-stats" type="checkbox" checked> Save reviewed stats and augment types</label>
+      <p class="detail-context">More populated stats replace the existing record. Equal counts require confirmation; fewer stats preserve omitted fields and ask before replacing conflicts. Uncheck to save only the screenshot.</p>
+      <div id="overwrite-prompt" class="notice" role="alert" hidden>
+        <p id="overwrite-message"></p>
+        <ul id="overwrite-changes"></ul>
+        <button id="overwrite-accept" type="button">Confirm update</button>
+        <button id="overwrite-decline" class="secondary" type="button">Keep existing stats</button>
+      </div>
       <div id="observation-panel" hidden>
         <p class="detail-context">Inventory snapshot slots (compare every slot, including empty slots, against this screenshot):</p>
         <ul id="observation-slots"></ul>

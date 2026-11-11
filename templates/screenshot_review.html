@@ -10,6 +10,12 @@
   {% if image %}<img class="ocr-preview" src="{{ image }}" alt="Uploaded item screenshot to review">{% else %}<p class="notice">The screenshot is no longer shown after a validation error. Re-upload it if you need to compare it again.</p>{% endif %}
   <form class="panel detail-panel ocr-form" action="{{ url_for('screenshot_save', upload_id=upload_id, row_index=row_index) }}" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if conflict %}
+    <div class="notice" role="alert">Existing: {{ conflict.old_count }} populated stats; screenshot: {{ conflict.new_count }}.
+      {% if conflict.decision == 'confirm_merge' %}Confirm updating conflicting values while preserving omitted fields.{% else %}Confirm replacing the existing record.{% endif %}
+      <ul>{% for change in conflict.changes %}<li>{{ change.field }}: {{ change.old if change.old is not none else '(missing)' }} → {{ change.new if change.new is not none else '(missing)' }}</li>{% endfor %}</ul></div>
+    <label class="confirmation"><input type="checkbox" name="overwrite_token" value="{{ conflict.token }}" required> Confirm update to existing item data.</label>
+    {% endif %}
     <label>Compatible augment slot types <span>The slot types this augment fits into, separated by |, e.g. 7|8. Leave blank if unknown; these are not the item's own sockets.</span><input type="text" name="types" value="{{ types_text }}"></label>
     <label>Stats (JSON) <span>Edit or add fields. Base and heroic attributes are separate, e.g. "str": 64 and "heroic_str": 89. Item sockets use numeric fields such as "socket_1_type": 3. Use integer values for ac, hp, mana, and endurance; other fields may be strings. distiller_class must be I–XXX or "Perfected only".</span><textarea name="stats_json" rows="10" required>{{ stats_json }}</textarea></label>
     <label>Recognized text <span>Correct any OCR errors. This text is saved for reference but isn't automatically used as stats.</span><textarea name="raw_text" rows="12" required>{{ raw_text }}</textarea></label>
