@@ -349,25 +349,29 @@ class AppTests(unittest.TestCase):
         Image.new("RGB", (20, 10), "red").save(image, format="PNG")
         png = image.getvalue()
         for index, name, item_id, ac in ((1, "First aug", 11, 42), (3, "Second aug", 12, 9)):
-            text = f"{name}\nAugmentation type: 7\nAC: {ac}"
+            text = f"{name}\nThis Augmentation fits in slot types: 7 (General: Group), 8 (General: Raid)\nAC: {ac}"
             with patch("app.recognize_screenshot", return_value=(text, "png")):
                 recognized = self.client.post("/uploads/1/screenshots/recognize", data={
                     "csrf_token": self.token, "screenshot": (io.BytesIO(png), "crop.png")
                 })
             self.assertEqual(recognized.status_code, 200)
             self.assertEqual(recognized.json["stats"], {"ac": ac})
+            self.assertEqual(recognized.json["types"], [7, 8])
             saved = self.client.post("/uploads/1/screenshots/save", data={
                 "csrf_token": self.token, "row_index": str(index), "confirmed": "yes", "save_stats": "yes",
-                "stats_json": json.dumps(recognized.json["stats"]), "types": "7", "raw_text": text,
+                "stats_json": json.dumps(recognized.json["stats"]),
+                "types": "|".join(map(str, recognized.json["types"])), "raw_text": text,
                 "screenshot": (io.BytesIO(png), "crop.png"),
             })
             self.assertEqual(saved.status_code, 200)
             self.assertEqual(json.loads(self.state["items"][item_id]["stats_json"])["ac"], ac)
+            self.assertEqual(json.loads(self.state["items"][item_id]["aug_types_json"]), [7, 8])
             response = self.client.get(f"/items/{item_id}/screenshot")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.mimetype, "image/png")
             self.assertEqual(Image.open(io.BytesIO(response.data)).size, (20, 10))
             self.assertIn(f"/items/{item_id}/screenshot".encode(), self.client.get(saved.json["item_url"]).data)
+            self.assertIn(b"7 / 8", self.client.get(saved.json["item_url"]).data)
         self.assertEqual(self.client.get("/items/999/screenshot").status_code, 404)
 
     def test_screenshot_save_requires_confirmation_and_preserves_catalog(self):

@@ -44,6 +44,21 @@ This Augmentation fits in slot types: 3 (General: Spell Effect)
         self.assertEqual(stats, {"ac": 505})
         self.assertEqual(types, [])
 
+    def test_extract_compatible_slot_types_with_labels(self):
+        examples = [
+            ("This Augmentation fits in slot types: 5 (General: Multiple Slot)", [5]),
+            ("This Augmentation fits in slot types: 7 (General: Group), 8 (General: Raid)", [7, 8]),
+            ("This Augmentation fits in slot types: 7 (General: Group),\n8 (General: Raid)", [7, 8]),
+            ("This Augmentation fits in slot types: 8 (Tier 2), 7 (General), 8 (Raid)", [7, 8]),
+            ("Augmentation type: 7 8\nAC: 42", [7, 8]),
+        ]
+        for text, expected in examples:
+            with self.subTest(text=text):
+                self.assertEqual(extract_candidates(text)[1], expected)
+        self.assertEqual(extract_candidates(
+            "This Augmentation fits in slot types: 5 (General)\nSlot 1, Type 8\nAC: 42"
+        )[1], [5])
+
     def test_user_actual_tourmaline_ocr_output(self):
         text = ("<o orrmaiine of Aiteraton EK) Description as Tourmaline of Alteration "
                 "Lore, No Trade, Augmentation, Prestige R Ear Head Face Neck Shoulders Arms Back Wrist "

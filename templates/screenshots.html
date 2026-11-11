@@ -34,7 +34,7 @@
       <label>Inventory item <span id="match-help">Select the item that matches this crop.</span>
         <select id="item-select" required><option value="">Select an item</option>{% for item in items %}<option value="{{ item.index }}">{{ item.name }} (#{{ item.id }})</option>{% endfor %}</select>
       </label>
-      <label>Augmentation types <span>Numbers separated by |; leave blank if unknown.</span><input id="types" type="text"></label>
+      <label>Compatible augment slot types <span>The slot types this augment fits into, separated by |; leave blank if unknown. These are not the item's own sockets.</span><input id="types" type="text"></label>
       <label>Stats (JSON) <span>Review every field. ac, hp, mana, and endurance must be integers; distiller_class is a Roman numeral string.</span><textarea id="stats" rows="10"></textarea></label>
       <label>Recognized text <span>Corrected text is saved with the stats if you select that option.</span><textarea id="raw-text" rows="12"></textarea></label>
       <label class="confirmation"><input id="save-stats" type="checkbox" checked> Save reviewed stats and augment types if this item has no catalog data</label>

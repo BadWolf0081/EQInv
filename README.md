@@ -106,6 +106,8 @@ Screenshot imports refuse to overwrite any existing item catalog record, includi
 
 Upload a UTF-8 CSV using the item data form. `id` and `aug_types` headers are required; type numbers are separated by `|`. `ac`, `hp`, `mana`, and `endurance` must be whole numbers when provided. Any other columns are preserved and displayed as text for matching items. Blank values mean unknown. Example (illustrative values, not real item data):
 
+`aug_types` contains the slot types an augmentation **fits into**, not the types of sockets on an item. Screenshot review suggests these from the “This Augmentation fits in slot types” text; verify all suggested values. Confirmed types are stored in `item_data.aug_types_json` by item ID and shown on item details. Existing catalog records are not updated by screenshot imports.
+
 ```csv
 id,aug_types,ac,hp,mana,source
 12345,7|8,42,120,100,manual

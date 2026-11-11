@@ -18,7 +18,9 @@ STAT_PATTERN = re.compile(
 )
 TYPE_PATTERN = re.compile(
     r"\b(?:Augmentation\s+types?|This\s+Augmentation\s+fits\s+in\s+slot\s+types?)"
-    r"\s*:[ \t]*([0-9][0-9 \t,/|]*)", re.IGNORECASE,
+    r"\s*:[ \t]*([0-9]+(?:[ \t]*\([^()]{0,100}\))?"
+    r"(?:(?:[ \t]*[,/|][ \t\r\n]*|[ \t]+)[0-9]+"
+    r"(?:[ \t]*\([^()]{0,100}\))?)*)", re.IGNORECASE,
 )
 SKILL_PATTERN = re.compile(
     r"\bSkill\s+Mod[ \t]*:[ \t]*(.*?)(?=[\r\n]|\s+This\s+Augmentation\b|$)",
@@ -74,7 +76,8 @@ def extract_candidates(text):
             if slots and all(word.lower() in SLOT_NAMES or len(word) == 1 for word in words):
                 stats["equip_slots"] = " ".join(slots)
     type_match = TYPE_PATTERN.search(text)
-    types = sorted(set(map(int, re.findall(r"\d+", type_match.group(1))))) if type_match else []
+    types = sorted({int(token) for token in re.findall(r"\([^()]*\)|[0-9]+", type_match.group(1))
+                    if token[0].isdigit()}) if type_match else []
     return stats, types
 
 

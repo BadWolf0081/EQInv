@@ -1,6 +1,6 @@
 {% macro item_stats(item) %}
   <dl class="details-list">
-    <div><dt>Augment types</dt><dd>{% if item.catalog and item.catalog.types %}{{ item.catalog.types|join(' / ') }}{% else %}Unknown{% endif %}</dd></div>
+    <div><dt>Compatible augment slot types</dt><dd>{% if item.catalog and item.catalog.types %}{{ item.catalog.types|join(' / ') }}{% else %}Unknown{% endif %}</dd></div>
     {% if item.catalog %}
       {% for key, value in item.catalog.stats.items() if key != 'ocr_text' %}
         <div><dt>{{ key|replace('_', ' ')|upper }}</dt><dd>{{ value if value != '' else 'Unknown' }}</dd></div>
