@@ -39,8 +39,19 @@ export EQINV_DB_HOST=127.0.0.1
 export EQINV_DB_PORT=3306
 export EQINV_DB_NAME=eqinv
 export EQINV_DB_USER=eqinv
-read -rs -p "MariaDB password: " EQINV_DB_PASSWORD; echo
+```
+
+Enter the MariaDB password you chose when creating the database user. The password will not appear as you type:
+
+```bash
+read -rs -p "MariaDB password: " EQINV_DB_PASSWORD
+echo
 export EQINV_DB_PASSWORD
+```
+
+`read` prompts for the password and stores it in the variable, `echo` moves to a new line, and `export` makes the variable available to the application. Then initialize the database and start the application:
+
+```bash
 python -m flask --app app init-db
 python app.py
 ```
