@@ -1,4 +1,5 @@
 import json
+import ipaddress
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -10,6 +11,8 @@ API = "https://discord.com/api/v10"
 REQUIRED = ("EQINV_DISCORD_CLIENT_ID", "EQINV_DISCORD_CLIENT_SECRET",
             "EQINV_DISCORD_REDIRECT_URI", "EQINV_DISCORD_GUILD_ID",
             "EQINV_DISCORD_ROLE_ID", "EQINV_DISCORD_BOT_TOKEN", "EQINV_SECRET_KEY")
+PRIVATE_LAN_NETWORKS = tuple(ipaddress.ip_network(network) for network in
+                             ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 
 
 class DiscordError(Exception):
@@ -40,8 +43,20 @@ def settings():
         raise DiscordError("Discord redirect URI must be an absolute callback URL.")
     if port == 0:
         raise DiscordError("Discord redirect URI must have a valid port.")
-    if uri.scheme != "https" and not (uri.scheme == "http" and uri.hostname in ("localhost", "127.0.0.1", "::1")):
-        raise DiscordError("Discord redirect URI must use HTTPS except on localhost.")
+    insecure_lan = get_setting("EQINV_ALLOW_INSECURE_LAN_HTTP", "false").strip().lower()
+    if insecure_lan not in ("true", "false"):
+        raise DiscordError("EQINV_ALLOW_INSECURE_LAN_HTTP must be true or false.")
+    private_ip = False
+    try:
+        address = ipaddress.ip_address(uri.hostname)
+        private_ip = isinstance(address, ipaddress.IPv4Address) and any(
+            address in network for network in PRIVATE_LAN_NETWORKS)
+    except ValueError:
+        pass
+    local_http = uri.scheme == "http" and uri.hostname in ("localhost", "127.0.0.1", "::1")
+    lan_http = uri.scheme == "http" and insecure_lan == "true" and private_ip
+    if uri.scheme != "https" and not (local_http or lan_http):
+        raise DiscordError("Discord redirect URI must use HTTPS except on localhost or an explicitly enabled private LAN IP.")
     return config
 
 

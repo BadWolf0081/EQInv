@@ -91,6 +91,40 @@ class DiscordAuthTests(unittest.TestCase):
                 with self.assertRaises(discord_auth.DiscordError):
                     discord_auth.settings()
 
+    def test_insecure_lan_callback_requires_explicit_opt_in_and_private_ip(self):
+        self.settings.stop()
+        with patch("config.FILE_SETTINGS", {}):
+            for url, flag, allowed in (
+                ("http://10.10.11.3:5000/auth/discord/callback", "true", True),
+                ("http://192.168.1.3:5000/auth/discord/callback", "true", True),
+                ("http://172.16.0.5:5000/auth/discord/callback", "true", True),
+                ("http://10.10.11.3:5000/auth/discord/callback", "false", False),
+                ("http://10.10.11.3:5000/auth/discord/callback", "yes", False),
+                ("http://8.8.8.8:5000/auth/discord/callback", "true", False),
+                ("http://example.test:5000/auth/discord/callback", "true", False),
+                ("ftp://10.10.11.3/callback", "true", False),
+            ):
+                with self.subTest(url=url, flag=flag), patch.dict(
+                    "os.environ", dict(CONFIG, EQINV_DISCORD_REDIRECT_URI=url,
+                                       EQINV_ALLOW_INSECURE_LAN_HTTP=flag), clear=True
+                ):
+                    if allowed:
+                        self.assertEqual(discord_auth.settings()["EQINV_DISCORD_REDIRECT_URI"], url)
+                    else:
+                        with self.assertRaises(discord_auth.DiscordError):
+                            discord_auth.settings()
+
+    def test_lan_login_uses_the_configured_callback(self):
+        self.settings.stop()
+        callback = "http://10.10.11.3:5000/auth/discord/callback"
+        environment = dict(CONFIG, EQINV_DISCORD_REDIRECT_URI=callback,
+                           EQINV_ALLOW_INSECURE_LAN_HTTP="true")
+        with patch("config.FILE_SETTINGS", {}), patch.dict("os.environ", environment, clear=True):
+            self.assertEqual(self.client.get("/", base_url="http://10.10.11.3:5000").status_code, 200)
+            response = self.client.get("/auth/discord", base_url="http://10.10.11.3:5000")
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(parse_qs(urlsplit(response.location).query)["redirect_uri"], [callback])
+
     def test_missing_role_and_discord_failure_deny_access(self):
         with self.client.session_transaction() as session:
             session["discord_id"] = "123"

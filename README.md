@@ -60,6 +60,17 @@ python app.py
 
 For local testing with the localhost callback, open `http://127.0.0.1:5000` on the same computer. The virtual environment activation and any environment overrides apply only to the current shell; set them again before restarting.
 
+For temporary testing from a different computer on a trusted LAN, an administrator can opt in to an HTTP callback using the **server's** private IPv4 address, for example:
+
+```ini
+EQINV_DISCORD_REDIRECT_URI = http://10.10.11.3:5000/auth/discord/callback
+EQINV_ALLOW_INSECURE_LAN_HTTP = true
+```
+
+Replace `10.10.11.3` with the actual address of the server running the application, not the browser computer's address. Register the exact same callback in the Discord Developer Portal, restart the application, and open `http://10.10.11.3:5000` (using your server's address) in the other computer's browser. Firewall rules must permit access to port 5000. The override accepts only private IPv4 addresses in `10/8`, `172.16/12`, or `192.168/16`, not public IPs or hostnames. Discord must accept the callback too; this app setting cannot override Discord's restrictions.
+
+**HTTP is unencrypted:** people on the network may be able to steal login codes or session cookies and read or change private inventories. Use this option only on a trusted network, never expose it to the internet, and set it back to `false` when switching to HTTPS.
+
 If the Linux host is remote, connect from your own computer using SSH port forwarding: `ssh -L 5000:127.0.0.1:5000 user@linux-host`. Leave that connection open and visit `http://127.0.0.1:5000` on your computer. Replace `user@linux-host` with your SSH destination. The inventory file can remain on the computer running the browser; select it in the upload form.
 
 The development server binds to **all IPv4 interfaces** (`0.0.0.0`) and does not provide HTTPS. Restrict its port with host and network firewall rules. Flask's development server is not intended for production. For remote use, run a production WSGI server behind HTTPS and keep the backend port inaccessible externally; the public HTTPS callback must exactly match the registered URL. The application stores original inventory contents and filenames in MariaDB. The default 10 MB upload limit applies to both forms.
