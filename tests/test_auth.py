@@ -1,5 +1,6 @@
 import unittest
 import time
+import io
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
@@ -181,6 +182,27 @@ class DiscordAuthTests(unittest.TestCase):
                 self.assertIn("HTTP 403", message)
                 for secret in ("private-code", "private-token", "bot-secret", "client-secret"):
                     self.assertNotIn(secret, message)
+
+    def test_api_requests_send_user_agent_and_auth_headers(self):
+        response = io.BytesIO(b'{"id":"123"}')
+        with patch("discord_auth.build_opener") as opener:
+            opener.return_value.open.return_value = response
+            result = discord_auth.api_json(
+                discord_auth.API + "/users/@me", headers={"Authorization": "Bearer token"})
+            self.assertEqual(result, {"id": "123"})
+            request = opener.return_value.open.call_args.args[0]
+            self.assertEqual(request.get_header("User-agent"), discord_auth.USER_AGENT)
+            self.assertEqual(request.get_header("Authorization"), "Bearer token")
+
+    def test_token_request_sends_user_agent_and_form_content_type(self):
+        response = io.BytesIO(b'{"access_token":"token"}')
+        with patch("discord_auth.build_opener") as opener:
+            opener.return_value.open.return_value = response
+            discord_auth.api_json(discord_auth.API + "/oauth2/token", form={"code": "test"})
+            request = opener.return_value.open.call_args.args[0]
+            self.assertEqual(request.get_header("User-agent"), discord_auth.USER_AGENT)
+            self.assertEqual(request.get_header("Content-type"), "application/x-www-form-urlencoded")
+            self.assertEqual(request.data, b"code=test")
 
 
 if __name__ == "__main__":

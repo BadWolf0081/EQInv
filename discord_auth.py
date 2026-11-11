@@ -8,6 +8,7 @@ from config import get_setting
 
 
 API = "https://discord.com/api/v10"
+USER_AGENT = "DiscordBot (https://github.com/, 1.0) EQInv/1.0"
 REQUIRED = ("EQINV_DISCORD_CLIENT_ID", "EQINV_DISCORD_CLIENT_SECRET",
             "EQINV_DISCORD_REDIRECT_URI", "EQINV_DISCORD_GUILD_ID",
             "EQINV_DISCORD_ROLE_ID", "EQINV_DISCORD_BOT_TOKEN", "EQINV_SECRET_KEY")
@@ -61,7 +62,9 @@ def settings():
 
 
 def api_json(url, headers=None, form=None):
-    request = Request(url, headers=headers or {}, data=urlencode(form).encode() if form is not None else None)
+    request_headers = {"User-Agent": USER_AGENT}
+    request_headers.update(headers or {})
+    request = Request(url, headers=request_headers, data=urlencode(form).encode() if form is not None else None)
     if form is not None:
         request.add_header("Content-Type", "application/x-www-form-urlencoded")
     try:
