@@ -345,6 +345,37 @@ class AppTests(unittest.TestCase):
         self.assertIn("Socket type 7", preview)
         self.assertNotIn("Skill mod:", preview)
 
+    def test_type_21_ornament_preview_has_no_stats(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        self.state["items"][1] = {"item_id": 1, "aug_types_json": "[]",
+                                  "stats_json": '{"socket_1_type":21}'}
+        self.state["items"][11] = {"item_id": 11, "aug_types_json": "[21]",
+                                   "stats_json": '{"hp":100,"skill_mod":"Some skill"}'}
+        def preview():
+            return self.client.get("/").get_data(as_text=True).split(
+                '<template id="augment-preview-0">')[1].split('</template>')[0]
+
+        result = preview()
+        self.assertIn("Socket type 21", result)
+        self.assertIn("Ornament", result)
+        self.assertNotIn("HP", result)
+        self.assertNotIn("Skill mod", result)
+        self.state["items"][1]["stats_json"] = "{}"
+        result = preview()
+        self.assertIn("Ornament", result)
+        self.assertNotIn("Socket type 21", result)
+        self.assertNotIn("HP", result)
+        self.state["items"][11]["aug_types_json"] = "[21,7]"
+        result = preview()
+        self.assertNotIn("Ornament", result)
+        self.assertIn("Skill mod:", result)
+        self.state["items"][1]["stats_json"] = '{"socket_1_type":7}'
+        result = preview()
+        self.assertNotIn("Ornament", result)
+        self.assertIn("HP 100", result)
+
     def test_screenshot_catalog_update_confirmation_and_concurrent_change(self):
         self.client.post("/upload", data={
             "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")

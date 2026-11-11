@@ -12,7 +12,9 @@
         </span>
         <span><strong>{{ entry.row.name }}</strong><br>
           {% if entry.summary.slot_type is not none %}<small>Socket type {{ entry.summary.slot_type }}</small><br>{% endif %}
-          {% if entry.summary.slot_type == 3 or (entry.summary.slot_type is none and entry.summary.skill_mod and not entry.summary.purity_type) %}
+          {% if entry.summary.ornament_type_21 %}
+            Ornament
+          {% elif entry.summary.slot_type == 3 or (entry.summary.slot_type is none and entry.summary.skill_mod and not entry.summary.purity_type) %}
             {% if entry.summary.skill_mod %}Skill mod: {{ entry.summary.skill_mod }}{% else %}Special effect not recorded{% endif %}
           {% elif entry.summary.purity_type %}
             Purity {{ entry.summary.purity if entry.summary.purity is not none else 'Unknown' }} · Power-source effects vary
