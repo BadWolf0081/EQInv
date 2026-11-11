@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EQ Inventory · Adventurer's Ledger</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✦</span><span>THE ADVENTURER'S <strong>LEDGER</strong></span></a>
+      <span class="masthead-note">A COMPANION FOR NORRATH</span>
+    </header>
+    <main>
+      <section class="hero">
+        <p class="eyebrow"><span>◆</span> YOUR JOURNEY, ACCOUNTED FOR</p>
+        <h1>Every item has a <em>story.</em></h1>
+        <p class="hero-copy">Keep your equipment, augments, and inventory in one place. Import an EverQuest inventory file to begin.</p>
+        <form action="{{ url_for('upload_inventory') }}" method="post" enctype="multipart/form-data" class="upload-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="file-label">Inventory file <input type="file" name="inventory" accept=".txt,text/plain" required></label>
+          <button type="submit">Import inventory <span>→</span></button>
+        </form>
+        <p class="hint">In game, run <code>/outputfile inventory</code> and choose the resulting text file.</p>
+      </section>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
+      {% endwith %}
+      {% if db_error %}
+        <div class="notice error" role="alert">Cannot connect to the database or read its tables. Configure MariaDB and run <code>flask --app app init-db</code>; see the README. Check the server logs for details.</div>
+      {% endif %}
+
+      {% if data %}
+      <section class="summary">
+        <div><p class="eyebrow">CURRENT SNAPSHOT</p><h2>{{ data.upload.character_name or "Unknown adventurer" }}{% if data.upload.server_name %} <span>of {{ data.upload.server_name }}</span>{% endif %}</h2><p>{{ data.upload.filename }} · Imported {{ data.upload.uploaded_at }} UTC</p></div>
+        <div class="summary-stats"><div><strong>{{ data.equipment|selectattr('row.item_id')|list|length }}</strong><span>GEAR SLOTS</span></div><div><strong>{{ data.rows|selectattr('item_id')|list|length }}</strong><span>ITEM ROWS</span></div><div><strong>{{ data.augments|length }}</strong><span>KNOWN TYPE 7/8</span></div></div>
+      </section>
+      <div class="rule"><span>✦</span></div>
+      <section aria-labelledby="equipment-title">
+        <div class="section-heading"><div><p class="eyebrow">READY FOR ADVENTURE</p><h2 id="equipment-title">Equipped gear</h2></div><p>Each item's augments appear beneath it.<br>Repeated slots retain their export order.</p></div>
+        <div class="gear-grid">
+          {% for gear in data.equipment %}
+          <article class="gear-card{% if not gear.row.item_id %} empty-gear{% endif %}">
+            <div class="gear-top"><span class="slot-icon" aria-hidden="true">✧</span><div><div class="slot-name">{{ gear.row.location }}{% if gear.row.location in ['Ear', 'Wrist', 'Fingers'] %} {{ gear.number }}{% endif %}</div><h3>{{ gear.row.name }}</h3>{% if gear.row.item_id %}<span class="item-id">ITEM #{{ gear.row.item_id }}</span>{% endif %}</div></div>
+            {% if gear.row.catalog and gear.row.catalog.stats %}<div class="gear-stats">{% for key, value in gear.row.catalog.stats.items() if value != '' %}<span>{{ key|upper }} {{ value }}</span>{% endfor %}</div>{% endif %}
+            {% if gear.augments %}
+            <ul class="aug-list">
+              {% for aug in gear.augments %}<li><span class="socket">{{ aug.location.rsplit('-Slot', 1)[-1] }}</span><span class="{% if not aug.item_id %}muted{% endif %}">{{ aug.name }}{% if aug.catalog and aug.catalog.types %} <small>TYPE {{ aug.catalog.types|join('/') }}</small>{% endif %}</span>{% if aug.catalog and aug.catalog.stats.ac is defined and aug.catalog.stats.ac != '' %}<b>AC {{ aug.catalog.stats.ac }}</b>{% endif %}</li>{% endfor %}
+            </ul>
+            {% else %}<p class="no-sockets">No augment slots in export</p>{% endif %}
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      <div class="rule"><span>✦</span></div>
+      <section aria-labelledby="augment-title">
+        <div class="section-heading"><div><p class="eyebrow">FIND YOUR NEXT UPGRADE</p><h2 id="augment-title">Type 7 / 8 augments</h2></div><p>Sorted by lowest known AC first.<br>Missing values are never treated as zero.</p></div>
+        <div class="panel">
+          {% if data.augments %}
+          <div class="table-wrap"><table><thead><tr><th>Augment</th><th>Equipped in</th><th>Type</th><th>AC ↑</th><th>Other imported stats</th></tr></thead><tbody>
+            {% for entry in data.augments %}<tr><td><strong>{{ entry.aug.name }}</strong><small> #{{ entry.aug.item_id }}</small></td><td>{{ entry.gear.row.location }}{% if entry.gear.row.location in ['Ear','Wrist','Fingers'] %} {{ entry.gear.number }}{% endif %} · Socket {{ entry.aug.location.rsplit('-Slot', 1)[-1] }}</td><td>{{ entry.aug.catalog.types|join(' / ') }}</td><td>{% set ac = entry.aug.catalog.stats.get('ac') %}{{ ac if ac is not none and ac != '' else 'Unknown' }}</td><td>{% for key, value in entry.aug.catalog.stats.items() if key != 'ac' and value != '' %}<span class="stat">{{ key|upper }} {{ value }}</span> {% else %}<span class="muted">—</span>{% endfor %}</td></tr>{% endfor %}
+          </tbody></table></div>
+          {% else %}<div class="empty-state"><span>◇</span><h3>No identified type 7/8 augments yet</h3><p>Import item data below to identify augment types and compare their AC.</p></div>{% endif %}
+          <p class="panel-foot">{{ data.unknown_types }} equipped augment(s) have unknown types and are excluded from this comparison. Item stats are catalog values, not character totals.</p>
+        </div>
+      </section>
+      <div class="rule"><span>✦</span></div>
+      <section aria-labelledby="inventory-title">
+        <div class="section-heading"><div><p class="eyebrow">THE FULL COLLECTION</p><h2 id="inventory-title">Inventory &amp; keyring</h2></div><label class="search-label">Search <input id="inventory-search" type="search" placeholder="Item, location, or ID…" autocomplete="off"></label></div>
+        <div class="panel table-wrap inventory-table"><table><thead><tr><th>Location</th><th>Item</th><th>ID</th><th>Count</th><th>Slots</th><th>Imported stats</th></tr></thead><tbody id="inventory-rows">
+          {% for row in data.rows if row.item_id %}<tr><td>{{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }}</td><td>{{ row.name }}</td><td>{{ row.item_id }}</td><td>{{ row.count }}</td><td>{{ row.slots if row.slots is not none else '—' }}</td><td>{% if row.catalog %}{% for key, value in row.catalog.stats.items() if value != '' %}<span class="stat">{{ key|upper }} {{ value }}</span> {% else %}<span class="muted">—</span>{% endfor %}{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}
+        </tbody></table><p id="no-results" class="panel-foot" hidden>No matching items.</p></div>
+      </section>
+      {% endif %}
+      <div class="rule"><span>✦</span></div>
+      <section class="catalog" aria-labelledby="catalog-title">
+        <div><p class="eyebrow">KNOWLEDGE IS POWER</p><h2 id="catalog-title">Enrich your item data</h2><p>The inventory export doesn't contain item stats or augment types. Import a CSV containing <code>id</code>, <code>aug_types</code>, and stats such as <code>ac</code>. Additional columns are preserved. See the README for the format.</p></div>
+        <form action="{{ url_for('upload_item_data') }}" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="file-label">Item data CSV <input type="file" name="items" accept=".csv,text/csv" required></label>
+          <button type="submit" class="secondary">Import item data <span>→</span></button>
+        </form>
+      </section>
+    </main>
+    <footer><span>✦ &nbsp; THE ADVENTURER'S LEDGER</span><span>Unofficial fan-made companion · Your files stay on this server</span></footer>
+  </div>
+</body>
+</html>
