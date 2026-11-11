@@ -24,6 +24,17 @@ app.config.update(MAX_CONTENT_LENGTH=10 * 1024 * 1024,
                   SECRET_KEY=os.environ.get("EQINV_SECRET_KEY", os.urandom(32)))
 logging.basicConfig(level=logging.INFO)
 
+PAPERDOLL_LAYOUT = (
+    ("Ear", 1, 1, 1), ("Head", 1, 2, 1), ("Face", 1, 3, 1), ("Ear", 2, 4, 1),
+    ("Chest", 1, 1, 2), ("Neck", 1, 4, 2),
+    ("Arms", 1, 1, 3), ("Back", 1, 4, 3),
+    ("Waist", 1, 1, 4), ("Shoulders", 1, 4, 4),
+    ("Wrist", 1, 1, 5), ("Wrist", 2, 4, 5),
+    ("Legs", 1, 1, 6), ("Hands", 1, 2, 6), ("Charm", 1, 3, 6), ("Feet", 1, 4, 6),
+    ("Fingers", 1, 2, 7), ("Fingers", 2, 3, 7), ("Power Source", 1, 4, 7),
+    ("Primary", 1, 1, 8), ("Secondary", 1, 2, 8), ("Range", 1, 3, 8), ("Ammo", 1, 4, 8),
+)
+
 
 @app.context_processor
 def csrf_context():
@@ -125,6 +136,7 @@ def dashboard(upload_id=None):
             ids = sorted({row["item_id"] for row in rows if row["item_id"]})
             catalog = {}
             icons = set()
+            screenshots = set()
             if ids:
                 placeholders = ",".join(["%s"] * len(ids))
                 cursor.execute(f"SELECT item_id, aug_types_json, stats_json FROM item_data WHERE item_id IN ({placeholders})", ids)
@@ -135,12 +147,15 @@ def dashboard(upload_id=None):
                     }
                 cursor.execute(f"SELECT item_id FROM item_icons WHERE item_id IN ({placeholders})", ids)
                 icons = {item["item_id"] for item in cursor.fetchall()}
+                cursor.execute(f"SELECT DISTINCT item_id FROM item_screenshots WHERE item_id IN ({placeholders})", ids)
+                screenshots = {item["item_id"] for item in cursor.fetchall()}
     equipment = []
     counts = {}
     for index, row in enumerate(rows):
         row["index"] = index
         row["catalog"] = catalog.get(row["item_id"])
         row["has_icon"] = row["item_id"] in icons
+        row["has_screenshot"] = row["item_id"] in screenshots
         if row["section"] != "inventory":
             continue
         if row["parent"] is None and row["location"] in EQUIPMENT:
@@ -164,8 +179,20 @@ def dashboard(upload_id=None):
         entry["aug"]["catalog"]["stats"].get("ac") if isinstance(entry["aug"]["catalog"]["stats"].get("ac"), int) else 0,
         entry["aug"]["name"].casefold(),
     ))
+    gear_by_slot = {(gear["row"]["location"], gear["number"]): gear["row"] for gear in equipment}
+    paperdoll = [
+        {"label": f"{name} {number}" if name in ("Ear", "Wrist", "Fingers") else name,
+         "row": gear_by_slot.get((name, number)), "column": column, "line": line}
+        for name, number, column, line in PAPERDOLL_LAYOUT
+    ]
+    general_labels = {f"General {number}" for number in range(1, 11)}
+    general = {row["location"]: row for row in rows
+               if row["section"] == "inventory" and row["parent"] is None
+               and row["location"] in general_labels}
+    bags = [{"label": f"General {number}", "row": general.get(f"General {number}")}
+            for number in range(1, 11)]
     return {"upload": upload, "equipment": equipment, "augments": augments,
-            "unknown_types": unknown_types, "rows": rows}
+            "unknown_types": unknown_types, "rows": rows, "paperdoll": paperdoll, "bags": bags}
 
 
 @app.route("/", methods=["GET"])

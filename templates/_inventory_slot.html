@@ -1,0 +1,15 @@
+{% macro inventory_slot(slot, upload_id) %}
+  {% set row = slot.row %}
+  {% if row and row.item_id %}
+    <a class="inventory-slot" href="{{ url_for('item_detail', upload_id=upload_id, row_index=row.index) }}"
+       aria-label="{{ slot.label }}: {{ row.name }}" title="{{ slot.label }}: {{ row.name }}"
+       {% if row.has_screenshot %}data-item-screenshot="{{ url_for('item_screenshot', item_id=row.item_id) }}" data-item-name="{{ row.name }}"{% endif %}>
+      {% if row.has_icon %}<img src="{{ url_for('item_icon', item_id=row.item_id) }}" alt="" loading="lazy">{% else %}<span class="slot-initial" aria-hidden="true">{{ slot.label[:2]|upper }}</span>{% endif %}
+      <span class="inventory-slot-label">{{ slot.label }}</span>
+    </a>
+  {% else %}
+    <span class="inventory-slot inventory-slot-empty" title="{{ slot.label }}: {% if row %}Empty{% else %}Not in export{% endif %}" aria-label="{{ slot.label }}: {% if row %}Empty{% else %}Not in export{% endif %}">
+      <span class="slot-initial" aria-hidden="true">{{ slot.label[:2]|upper }}</span><span class="inventory-slot-label">{{ slot.label }}</span>
+    </span>
+  {% endif %}
+{% endmacro %}

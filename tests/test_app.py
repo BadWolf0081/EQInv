@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pymysql
 from PIL import Image
 
-from app import app
+from app import app, dashboard
 from inventory import parse_inventory
 from test_inventory import EXPORT
 
@@ -54,6 +54,8 @@ class Cursor:
             self.result = {"image_data": images[index - 1]} if 1 <= index <= len(images) else None
         elif query.startswith("SELECT item_id FROM item_icons"):
             self.result = [{"item_id": item_id} for item_id in values if item_id in self.state["icons"]]
+        elif query.startswith("SELECT DISTINCT item_id FROM item_screenshots"):
+            self.result = [{"item_id": item_id} for item_id in values if self.state["screenshots"].get(item_id)]
         elif query.startswith("SELECT image_data FROM item_icons"):
             image = self.state["icons"].get(values[0])
             self.result = {"image_data": image} if image else None
@@ -138,6 +140,61 @@ class AppTests(unittest.TestCase):
         self.assertLess(table.index(b"Second aug"), table.index(b"First aug"))
         self.assertIn(b"Ear 2", table)
         self.assertEqual(self.state["commits"], 2)
+
+    def test_inventory_window_slot_identity_and_screenshot_links(self):
+        export = (
+            "Location\tName\tID\tCount\tSlots\n"
+            "Ear\tFirst earring\t1\t1\t1\n"
+            "Ear-Slot1\tFirst aug\t11\t1\t0\n"
+            "Ear\tSecond earring\t2\t1\t1\n"
+            "Wrist\tFirst wrist\t3\t1\t0\n"
+            "Wrist\tSecond wrist\t4\t1\t0\n"
+            "Fingers\tFirst ring\t5\t1\t0\n"
+            "Fingers\tSecond ring\t6\t1\t0\n"
+            "Head\tEmpty\t0\t0\t0\n"
+            "Primary\tSword\t7\t1\t0\n"
+            "Range\tBow\t8\t1\t0\n"
+            "General 1\tBag\t9\t1\t1\n"
+            "General 1-Slot1\tNested item\t10\t1\t0\n"
+            "General 11\tExtra bag\t12\t1\t0\n"
+        ).encode()
+        parsed = parse_inventory(export, "Example_Test-Inventory.txt")
+        self.state["uploads"].append({"id": 1, "filename": parsed["filename"], "character_name": parsed["character"],
+                                      "server_name": parsed["server"], "uploaded_at": "2026-01-01",
+                                      "rows_json": json.dumps(parsed["rows"])})
+        self.state["screenshots"][2] = [b"saved image"]
+        self.state["icons"][2] = b"saved icon"
+        data = dashboard()
+        slots = {slot["label"]: slot for slot in data["paperdoll"]}
+        for label, item_id, column, line in [
+            ("Ear 1", 1, 1, 1), ("Ear 2", 2, 4, 1),
+            ("Wrist 1", 3, 1, 5), ("Wrist 2", 4, 4, 5),
+            ("Fingers 1", 5, 2, 7), ("Fingers 2", 6, 3, 7),
+            ("Primary", 7, 1, 8), ("Range", 8, 3, 8),
+        ]:
+            with self.subTest(slot=label):
+                slot = slots[label]
+                self.assertEqual((slot["row"]["item_id"], slot["column"], slot["line"]), (item_id, column, line))
+        self.assertEqual(slots["Head"]["row"]["item_id"], 0)
+        self.assertIsNone(slots["Face"]["row"])
+        self.assertEqual(data["bags"][0]["row"]["item_id"], 9)
+        self.assertIsNone(data["bags"][1]["row"])
+
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertRegex(page, re.compile(r'grid-column:4;grid-row:1.*?href="/uploads/1/items/2"', re.DOTALL))
+        self.assertIn('aria-label="Ear 2: Second earring"', page)
+        self.assertIn('data-item-screenshot="/items/2/screenshot"', page)
+        self.assertIn('src="/items/2/icon"', page)
+        self.assertIn('aria-label="Head: Empty"', page)
+        self.assertIn('aria-label="Face: Not in export"', page)
+        self.assertIn('aria-label="General 1: Bag"', page)
+        self.assertIn("Extra bag", page)
+        detail = self.client.get("/uploads/1/items/2").get_data(as_text=True)
+        self.assertIn('src="/items/2/screenshot"', detail)
+        self.assertNotIn("No saved screenshot for this item yet.", detail)
+        no_image = self.client.get("/uploads/1/items/0").get_data(as_text=True)
+        self.assertIn("No saved screenshot for this item yet.", no_image)
+        self.assertIn("First aug", no_image)
 
     def test_rejects_malformed_upload_without_database_write(self):
         response = self.client.post("/upload", data={"csrf_token": self.token, "inventory": (io.BytesIO(b"invalid"), "bad.txt")},
