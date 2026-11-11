@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Review screenshot · Adventurer's Ledger</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><div class="page"><main class="item-detail">
+  <a class="item-link back-link" href="{{ url_for('item_detail', upload_id=upload_id, row_index=row_index) }}">← Cancel and return to item</a>
+  <p class="eyebrow">VERIFY BEFORE SAVING</p>
+  <h1>Review {{ row.name }}</h1>
+  <p class="detail-context">Item #{{ row.item_id }} · {{ row.location }}. OCR can misread values and does not verify that this is the correct item. Compare every value with your screenshot.</p>
+  {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+  {% if image %}<img class="ocr-preview" src="{{ image }}" alt="Uploaded item screenshot to review">{% else %}<p class="notice">The screenshot is no longer shown after a validation error. Re-upload it if you need to compare it again.</p>{% endif %}
+  <form class="panel detail-panel ocr-form" action="{{ url_for('screenshot_save', upload_id=upload_id, row_index=row_index) }}" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Augmentation types <span>Use numbers separated by |, e.g. 7|8. Leave blank if unknown.</span><input type="text" name="types" value="{{ types_text }}"></label>
+    <label>Stats (JSON) <span>Edit or add fields. Use integer values for ac, hp, mana, and endurance; other fields may be strings.</span><textarea name="stats_json" rows="10" required>{{ stats_json }}</textarea></label>
+    <label>Recognized text <span>Correct any OCR errors. This text is saved for reference but isn't automatically used as stats.</span><textarea name="raw_text" rows="12" required>{{ raw_text }}</textarea></label>
+    <label class="confirmation"><input type="checkbox" name="confirmed" value="yes" required> I verified the screenshot belongs to this item and reviewed these values.</label>
+    <button type="submit">Save reviewed item data →</button>
+  </form>
+</main></div></body></html>

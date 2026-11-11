@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pymysql
+
 from app import app
 from inventory import parse_inventory
 from test_inventory import EXPORT
@@ -38,6 +40,11 @@ class Cursor:
             self.result = self.state["lucy"].get(values[0])
         elif query.startswith("SELECT item_id"):
             self.result = list(self.state["items"].values())
+        elif query.startswith("INSERT INTO item_data"):
+            item_id, types, stats = values
+            if item_id in self.state["items"]:
+                raise pymysql.err.IntegrityError(1062, "duplicate item")
+            self.state["items"][item_id] = {"item_id": item_id, "aug_types_json": types, "stats_json": stats}
         else:
             raise AssertionError(query)
 
@@ -261,6 +268,53 @@ class AppTests(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("no changes committed", result.output)
         self.assertEqual(self.state["commits"], 0)
+
+    def test_screenshot_review_and_confirmed_save(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        with patch("app.recognize_screenshot", return_value=("First aug\nAugmentation type: 7 8\nAC: 42 HP: +100", "png")):
+            response = self.client.post("/uploads/1/items/1/screenshot", data={
+                "csrf_token": self.token, "screenshot": (io.BytesIO(b"image"), "item.png")
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data:image/png;base64,', response.data)
+        self.assertIn(b'7|8', response.data)
+        self.assertNotIn(11, self.state["items"])
+        response = self.client.post("/uploads/1/items/1/screenshot/save", data={
+            "csrf_token": self.token, "confirmed": "yes", "types": "7|8",
+            "stats_json": '{"ac":42,"hp":100}', "raw_text": "First aug\\nAC: 42",
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Reviewed screenshot data saved", response.data)
+        self.assertEqual(json.loads(self.state["items"][11]["aug_types_json"]), [7, 8])
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["ac"], 42)
+
+    def test_screenshot_saving_requires_confirmation_and_preserves_existing(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        payload = {"csrf_token": self.token, "types": "7", "stats_json": '{"ac":42}', "raw_text": "AC: 42"}
+        response = self.client.post("/uploads/1/items/1/screenshot/save", data=payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn(11, self.state["items"])
+        payload["confirmed"] = "yes"
+        self.client.post("/uploads/1/items/1/screenshot/save", data=payload)
+        payload["stats_json"] = '{"ac":10}'
+        response = self.client.post("/uploads/1/items/1/screenshot/save", data=payload, follow_redirects=True)
+        self.assertIn(b"did not overwrite", response.data)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["ac"], 42)
+
+    def test_screenshot_ocr_errors_are_visible(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        with patch("app.recognize_screenshot", side_effect=RuntimeError("Tesseract not installed")):
+            response = self.client.post("/uploads/1/items/1/screenshot", data={
+                "csrf_token": self.token, "screenshot": (io.BytesIO(b"x"), "item.png")
+            }, follow_redirects=True)
+        self.assertIn(b"Tesseract not installed", response.data)
+        self.assertNotIn(11, self.state["items"])
 
 
 if __name__ == "__main__":

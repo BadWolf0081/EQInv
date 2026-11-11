@@ -2,7 +2,7 @@
   <dl class="details-list">
     <div><dt>Augment types</dt><dd>{% if item.catalog and item.catalog.types %}{{ item.catalog.types|join(' / ') }}{% else %}Unknown{% endif %}</dd></div>
     {% if item.catalog %}
-      {% for key, value in item.catalog.stats.items() %}
+      {% for key, value in item.catalog.stats.items() if key != 'ocr_text' %}
         <div><dt>{{ key|replace('_', ' ')|upper }}</dt><dd>{{ value if value != '' else 'Unknown' }}</dd></div>
       {% endfor %}
       {% if not item.catalog.stats %}<div><dt>Item stats</dt><dd>Not provided</dd></div>{% endif %}
@@ -27,6 +27,9 @@
     </header>
     <main class="item-detail">
       <a class="item-link back-link" href="{{ url_for('index') }}">← Back to inventory</a>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
+      {% endwith %}
       <p class="eyebrow">ITEM DETAILS · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}{% if data.upload.server_name %} · {{ data.upload.server_name }}{% endif %}</p>
       <h1>{{ row.name }}</h1>
       <p class="detail-context">Item #{{ row.item_id }} · {{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }} · Count {{ row.count }}{% if row.slots is not none %} · Export slots {{ row.slots }}{% endif %}</p>
@@ -37,7 +40,17 @@
         <p class="eyebrow">CATALOG DATA</p>
         <h2 id="stats-title">Item stats</h2>
         {{ item_stats(row) }}
-        <p class="panel-foot">Stats and augment types come from manually imported item data, not the inventory export. Unknown does not mean zero.</p>
+        {% if row.catalog and row.catalog.stats.get('ocr_text') %}<details><summary>Reviewed screenshot text</summary><pre class="ocr-text">{{ row.catalog.stats.ocr_text }}</pre></details>{% endif %}
+        <p class="panel-foot">Stats and augment types come from imported data or reviewed screenshots, not the inventory export. Unknown does not mean zero.</p>
+      </section>
+      <section class="panel detail-panel" aria-labelledby="ocr-title">
+        <p class="eyebrow">SCREENSHOT IMPORT</p><h2 id="ocr-title">Read an item screenshot</h2>
+        <p class="detail-context">Crop an in-game item inspection window for this item. Review the OCR and verify the item before saving. Existing catalog data will not be overwritten.</p>
+        <form action="{{ url_for('screenshot_review', upload_id=data.upload.id, row_index=row.index) }}" method="post" enctype="multipart/form-data" class="upload-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="file-label">PNG or JPEG screenshot<input type="file" name="screenshot" accept="image/png,image/jpeg" required></label>
+          <button type="submit">Review screenshot →</button>
+        </form>
       </section>
       {% if children %}
       <section class="detail-children" aria-labelledby="children-title">

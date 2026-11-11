@@ -83,9 +83,24 @@ python -m flask --app app import-lucy itemlist.txt.gz
 
 An uncompressed `itemlist.txt` works too. Importing is transactional and can be repeated; it adds or updates IDs in a separate `lucy_items` reference table without altering your seen items or manually imported stats. IDs omitted from a subsequent list remain. The `init-db` command creates the reference table on existing installations.
 
-Item detail pages show a link to Lucy when that item ID appears in the imported list. The link opens Lucy in your browser; the app does not fetch or scrape the page or its images. The list contains only IDs, names, and links—not item images, stats, or augment types—so it cannot populate comparisons by itself. Use the manual item data import below for those values. Check the source's terms and obtain permission before redistributing its data.
+Item detail pages show a link to Lucy when that item ID appears in the imported list. The link opens Lucy in your browser; the app does not fetch or scrape the page or its images. The list contains only IDs, names, and links—not item images, stats, or augment types—so it cannot populate comparisons by itself. Use the screenshot or manual item data import below for those values. Check the source's terms and obtain permission before redistributing its data.
 
 Lucy links are constructed from the item ID rather than stored as full URLs. Each item detail page also provides an Allakhazam name-search link, even when the item is absent from the Lucy list. Allakhazam uses different page IDs and names can be duplicated, so check the item ID in the search results before selecting an entry. Neither link imports stats automatically.
+
+## Import stats from an item screenshot
+
+Install Tesseract OCR with English language data on the **Linux server**. On Debian or Ubuntu:
+
+```bash
+sudo apt install tesseract-ocr tesseract-ocr-eng
+python -m pip install -r requirements.txt
+```
+
+In the game on Windows 11, open an item's inspection window and take a screenshot using your normal Windows screenshot tool. Crop the screenshot to the item window so its name, stats, and augmentation type are legible. In the website, open that exact item or augment from your uploaded inventory, select the PNG or JPEG screenshot, and choose **Review screenshot**. No companion needs to run alongside the game.
+
+OCR runs locally on the Linux server and suggests some visible stats and augment types. Compare the screenshot and the recognized text carefully, correct the suggested JSON and types, add missing stats yourself, then confirm and save. Use `7|8` for a type 7/8 augment; an item's socket numbers are not augment types. `ac`, `hp`, `mana`, and `endurance` must be whole numbers; additional stats may be numbers or strings. Empty or unrecognized values are not assumed to be zero. After saving, the reviewed values join the existing catalog and can appear in the augment comparison. The corrected recognized text is saved for reference; the screenshot itself is not stored. The screenshot and form data are sent to your Linux server, not a third-party OCR service.
+
+Screenshot imports refuse to overwrite any existing item catalog record, including one imported while you are reviewing. Use the CSV import below if you intentionally need to replace a record. OCR is imperfect and this workflow has not been calibrated against every EverQuest item window; verify the correct item and every value. The upload limit is 10 MB and screenshots must be no larger than 20 megapixels. This workflow does not inspect game memory, capture network traffic, or interact with the game process.
 
 ## Import item data
 

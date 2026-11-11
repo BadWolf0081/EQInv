@@ -1,4 +1,5 @@
 import csv
+import base64
 import gzip
 import json
 import logging
@@ -13,6 +14,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
 from inventory import EQUIPMENT, parse_inventory, parse_item_data, parse_lucy_items
+from screenshot_ocr import extract_candidates, recognize_screenshot, validate_review
 
 app = Flask(__name__)
 app.config.update(MAX_CONTENT_LENGTH=10 * 1024 * 1024,
@@ -188,6 +190,82 @@ def item_detail(upload_id, row_index):
     allakhazam_search = "https://everquest.allakhazam.com/db/search?" + urlencode({"q": row["name"]})
     return render_template("item.html", data=data, row=row, children=children, parent=parent,
                            lucy=lucy, allakhazam_search=allakhazam_search)
+
+
+def screenshot_item(upload_id, row_index):
+    data = dashboard(upload_id)
+    if data is None or row_index >= len(data["rows"]) or not data["rows"][row_index]["item_id"]:
+        abort(404)
+    return data["rows"][row_index]
+
+
+@app.route("/uploads/<int:upload_id>/items/<int:row_index>/screenshot", methods=["POST"])
+def screenshot_review(upload_id, row_index):
+    try:
+        row = screenshot_item(upload_id, row_index)
+        if row["catalog"]:
+            flash("This item already has catalog data; screenshot import will not overwrite it.", "error")
+            return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
+        image = request.files.get("screenshot")
+        if not image or not image.filename:
+            raise ValueError("Choose a PNG or JPEG screenshot.")
+        image_data = image.read()
+        text, image_format = recognize_screenshot(image_data)
+        stats, types = extract_candidates(text)
+        preview = f"data:image/{image_format};base64," + base64.b64encode(image_data).decode("ascii")
+        return render_template("screenshot_review.html", row=row, upload_id=upload_id, row_index=row_index,
+                               image=preview, raw_text=text, stats_json=json.dumps(stats, indent=2),
+                               types_text="|".join(map(str, types)), error=None)
+    except ValueError as exc:
+        flash(str(exc), "error")
+    except RuntimeError as exc:
+        app.logger.error("Screenshot OCR failed: %s", exc)
+        flash(str(exc), "error")
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Screenshot review failed")
+        flash("Database error: screenshot was not processed. Check the server logs.", "error")
+    return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
+
+
+@app.route("/uploads/<int:upload_id>/items/<int:row_index>/screenshot/save", methods=["POST"])
+def screenshot_save(upload_id, row_index):
+    raw_text = request.form.get("raw_text", "")
+    stats_json = request.form.get("stats_json", "")
+    types_text = request.form.get("types", "")
+    try:
+        row = screenshot_item(upload_id, row_index)
+    except (pymysql.MySQLError, OSError, ValueError):
+        app.logger.exception("Unable to load item for screenshot review")
+        flash("Could not load the item; screenshot data was not saved. Check the server logs.", "error")
+        return redirect(url_for("index"))
+    try:
+        if request.form.get("confirmed") != "yes":
+            raise ValueError("Confirm that the screenshot and recognized values match this item.")
+        stats, types = validate_review(stats_json, types_text, raw_text)
+        with connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO item_data (item_id, aug_types_json, stats_json) VALUES (%s, %s, %s)",
+                    (row["item_id"], json.dumps(types), json.dumps(stats, ensure_ascii=False)),
+                )
+            connection.commit()
+        flash("Reviewed screenshot data saved.", "success")
+        return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
+    except pymysql.err.IntegrityError as exc:
+        if exc.args and exc.args[0] == 1062:
+            flash("This item already has catalog data; screenshot import did not overwrite it.", "error")
+        else:
+            app.logger.exception("Unable to save reviewed screenshot")
+            flash("Database error: screenshot data was not saved. Check the server logs.", "error")
+        return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
+    except ValueError as exc:
+        return render_template("screenshot_review.html", row=row, upload_id=upload_id, row_index=row_index,
+                               image=None, raw_text=raw_text, stats_json=stats_json,
+                               types_text=types_text, error=str(exc)), 400
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Unable to save reviewed screenshot")
+        flash("Database error: screenshot data was not saved. Check the server logs.", "error")
+        return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
 
 
 @app.route("/upload", methods=["POST"])
