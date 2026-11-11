@@ -227,7 +227,7 @@
       types.value = result.types.join("|");
       raw.value = result.raw_text;
       saveStats.checked = true;
-      const text = result.raw_text.toLocaleLowerCase().replace(/\s+/g, " ");
+      const text = result.name_match_text.toLocaleLowerCase().replace(/\s+/g, " ");
       const matches = items.filter(item => containsItemName(text, item.name.toLocaleLowerCase().replace(/\s+/g, " ")));
       const suggestedIds = new Set(result.name_suggestions.map(item => item.id));
       const options = matches.length ? matches : items.filter(item => suggestedIds.has(item.id));

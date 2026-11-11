@@ -18,7 +18,7 @@ from augment_preview import augment_summary
 from base_stats import calculate_base
 from icon_detection import automatic_icon
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
-from item_matching import suggest_item_names
+from item_matching import item_name_text, suggest_item_names
 from screenshot_ocr import extract_candidates, load_screenshot, recognize_screenshot, validate_review
 from screenshot_updates import confirmation_token, describe_changes, stat_count, update_decision
 from socket_types import socket_type
@@ -454,7 +454,7 @@ def screenshots_recognize(upload_id):
         for row in data["rows"]:
             if row["item_id"] and row["item_id"] not in items:
                 items[row["item_id"]] = {"index": row["index"], "id": row["item_id"], "name": row["name"]}
-        return jsonify(raw_text=text, stats=stats, types=types,
+        return jsonify(raw_text=text, name_match_text=item_name_text(text), stats=stats, types=types,
                        name_suggestions=suggest_item_names(text, items.values()))
     except ValueError as exc:
         return jsonify(error=str(exc)), 400

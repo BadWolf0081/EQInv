@@ -2,12 +2,24 @@ import re
 from difflib import SequenceMatcher
 
 
+REMOVAL_INSTRUCTIONS = re.compile(
+    r"\b(?:you\s+must\s*use\b|"
+    r"this\s+augment\s+can\s+(?:only\s+)?(?:safely\s+)?be\s+removed\b)",
+    re.IGNORECASE,
+)
+
+
+def item_name_text(text):
+    instructions = REMOVAL_INSTRUCTIONS.search(text)
+    return text[:instructions.start()] if instructions else text
+
+
 def normalize_name(text):
     return " ".join(re.findall(r"[^\W_]+", text.casefold(), re.UNICODE))
 
 
 def suggest_item_names(text, items):
-    lines = [normalize_name(line[:160]) for line in text.splitlines()[:10]]
+    lines = [normalize_name(line[:160]) for line in item_name_text(text).splitlines()[:10]]
     lines = [line.split()[:20] for line in lines if line]
     matches = []
     for item in items:

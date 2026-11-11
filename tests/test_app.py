@@ -736,6 +736,30 @@ class AppTests(unittest.TestCase):
         self.assertIn("Roman numeral", saved.json["error"])
         self.assertNotIn(11, self.state["items"])
 
+    def test_screenshot_name_matching_excludes_distiller_removal_instructions(self):
+        inventory = (
+            b"Location\tName\tID\tCount\tSlots\n"
+            b"Primary\tSword\t1\t1\t1\n"
+            b"Primary-Slot1\tTopaz of Evocation\t111800\t1\t0\n"
+            b"General 1\tBag\t2\t1\t10\n"
+            b"General 1-Slot1\tPerfected Augmentation Distiller\t52023\t1\t0\n"
+        )
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(inventory), "Example_Test-Inventory.txt")
+        })
+        text = ("Topaz of Evocation\nDescription\nTopaz of Evocation\n"
+                "You must use a solvent Class XII Augmentation Distiller or higher, "
+                "or use a Perfected Augmentation Distiller, to remove this augment safely.")
+        with patch("app.recognize_screenshot", return_value=(text, "png")):
+            response = self.client.post("/uploads/1/screenshots/recognize", data={
+                "csrf_token": self.token, "screenshot": (io.BytesIO(b"image"), "crop.png")
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["raw_text"], text)
+        self.assertNotIn("Perfected Augmentation Distiller", response.json["name_match_text"])
+        self.assertEqual([item["id"] for item in response.json["name_suggestions"]], [111800])
+        self.assertEqual(response.json["stats"]["distiller_class"], "XII")
+
     def test_screenshot_distiller_ocr_corrections_are_reviewed_and_saved(self):
         self.client.post("/upload", data={
             "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
