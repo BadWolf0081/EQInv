@@ -69,6 +69,7 @@ STAT_NAMES = {
 }
 HEROIC_STATS = {"str", "sta", "agi", "dex", "wis", "int", "cha",
                 "magic", "fire", "cold", "disease", "poison", "corruption"}
+DISTILLER_OCR_CORRECTIONS = {"XIL": "XII", "XILL": "XIII"}
 
 
 def extract_candidates(text):
@@ -98,7 +99,8 @@ def extract_candidates(text):
         stats["size"] = size.group(1).upper()
     distiller = DISTILLER_PATTERN.search(text)
     if distiller:
-        stats["distiller_class"] = distiller.group(1).upper()
+        numeral = distiller.group(1).upper()
+        stats["distiller_class"] = DISTILLER_OCR_CORRECTIONS.get(numeral, numeral)
     elif PERFECTED_ONLY_PATTERN.search(text):
         stats["distiller_class"] = "Perfected only"
     sockets = {}

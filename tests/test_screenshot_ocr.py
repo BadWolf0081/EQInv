@@ -201,10 +201,16 @@ Skill Mod: Dodge 10 % (45 Max)
             stats, _ = extract_candidates(text)
             self.assertEqual(stats["distiller_class"], numeral)
             validate_review('{"distiller_class":"' + numeral + '"}', "", text)
-        text = "You must use a solvent Class XIL Augmentation Distiller or higher."
-        stats, _ = extract_candidates(text)
-        self.assertEqual(stats["distiller_class"], "XIL")
-        for numeral in ("XIL", "XXXX", "IIII", "ABC", "31"):
+        for misread, expected in (("XIL", "XII"), ("XILL", "XIII"), ("xil", "XII"), ("xill", "XIII")):
+            with self.subTest(misread=misread):
+                text = f"You must use a solvent Class {misread} Augmentation Distiller or higher."
+                stats, _ = extract_candidates(text)
+                self.assertEqual(stats["distiller_class"], expected)
+                reviewed, _ = validate_review('{"distiller_class":"' + expected + '"}', "", text)
+                self.assertEqual(reviewed["ocr_text"], text)
+        text = "You must use a solvent Class XXXX Augmentation Distiller or higher."
+        self.assertEqual(extract_candidates(text)[0]["distiller_class"], "XXXX")
+        for numeral in ("XIL", "XILL", "XXXX", "IIII", "ABC", "31"):
             with self.subTest(numeral=numeral), self.assertRaisesRegex(ValueError, "Roman numeral"):
                 validate_review('{"distiller_class":"' + numeral + '"}', "", text)
         text = "You must use a Perfected Augmentation Distiller to remove this augment."
@@ -213,7 +219,7 @@ Skill Mod: Dodge 10 % (45 Max)
         validate_review('{"distiller_class":"Perfected only"}', "", text)
         ambiguous = ("You must use a solvent Class XIL Augmentation Distiller or higher, "
                      "or use a Perfected Augmentation Distiller.")
-        self.assertEqual(extract_candidates(ambiguous)[0]["distiller_class"], "XIL")
+        self.assertEqual(extract_candidates(ambiguous)[0]["distiller_class"], "XII")
         self.assertNotIn("distiller_class", extract_candidates(
             "You must use a solvent Class ??? Augmentation Distiller or higher, "
             "or use a Perfected Augmentation Distiller.")[0])

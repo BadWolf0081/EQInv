@@ -720,21 +720,46 @@ class AppTests(unittest.TestCase):
         Image.new("RGB", (10, 10), "red").save(image, format="PNG")
         png = image.getvalue()
         text = ("First auq\nThis Augmentation fits in slot types: 5\n"
-                "You must use a solvent Class XIL Augmentation Distiller or higher.")
+                "You must use a solvent Class XXXX Augmentation Distiller or higher.")
         with patch("app.recognize_screenshot", return_value=(text, "png")):
             response = self.client.post("/uploads/1/screenshots/recognize", data={
                 "csrf_token": self.token, "screenshot": (io.BytesIO(png), "crop.png")
             })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["name_suggestions"][0]["id"], 11)
-        self.assertEqual(response.json["stats"]["distiller_class"], "XIL")
+        self.assertEqual(response.json["stats"]["distiller_class"], "XXXX")
         payload = {"csrf_token": self.token, "row_index": "1", "confirmed": "yes", "save_stats": "yes",
-                   "stats_json": '{"distiller_class":"XIL"}', "types": "5", "raw_text": text,
+                   "stats_json": '{"distiller_class":"XXXX"}', "types": "5", "raw_text": text,
                    "screenshot": (io.BytesIO(png), "crop.png")}
         saved = self.client.post("/uploads/1/screenshots/save", data=payload)
         self.assertEqual(saved.status_code, 400)
         self.assertIn("Roman numeral", saved.json["error"])
         self.assertNotIn(11, self.state["items"])
+
+    def test_screenshot_distiller_ocr_corrections_are_reviewed_and_saved(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        image = io.BytesIO()
+        Image.new("RGB", (10, 10), "red").save(image, format="PNG")
+        png = image.getvalue()
+        for index, item_id, misread, expected in ((1, 11, "XIL", "XII"), (3, 12, "XILL", "XIII")):
+            with self.subTest(misread=misread):
+                text = f"Solvent Class {misread} Augmentation Distiller"
+                with patch("app.recognize_screenshot", return_value=(text, "png")):
+                    response = self.client.post("/uploads/1/screenshots/recognize", data={
+                        "csrf_token": self.token, "screenshot": (io.BytesIO(png), "crop.png")
+                    })
+                self.assertEqual(response.json["stats"]["distiller_class"], expected)
+                self.assertEqual(response.json["raw_text"], text)
+                saved = self.client.post("/uploads/1/screenshots/save", data={
+                    "csrf_token": self.token, "row_index": str(index), "confirmed": "yes", "save_stats": "yes",
+                    "stats_json": json.dumps(response.json["stats"]), "types": "", "raw_text": text,
+                    "screenshot": (io.BytesIO(png), "crop.png"),
+                })
+                self.assertEqual(saved.status_code, 200)
+                self.assertEqual(json.loads(self.state["items"][item_id]["stats_json"]),
+                                 {"distiller_class": expected, "ocr_text": text})
 
     def test_screenshot_save_requires_confirmation_and_preserves_catalog(self):
         self.client.post("/upload", data={

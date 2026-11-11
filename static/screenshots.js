@@ -229,16 +229,18 @@
       saveStats.checked = true;
       const text = result.raw_text.toLocaleLowerCase().replace(/\s+/g, " ");
       const matches = items.filter(item => containsItemName(text, item.name.toLocaleLowerCase().replace(/\s+/g, " ")));
-      itemSelect.value = matches.length === 1 ? String(matches[0].index) : "";
+      const suggestedIds = new Set(result.name_suggestions.map(item => item.id));
+      const options = matches.length ? matches : items.filter(item => suggestedIds.has(item.id));
+      const selected = options.length === 1 ? options[0] : null;
+      itemSelect.value = selected ? String(selected.index) : "";
       updateObservation();
       suggestionButtons.replaceChildren();
-      const options = matches.length === 1 ? [] : result.name_suggestions;
-      suggestions.hidden = options.length === 0;
-      for (const item of options) {
+      suggestions.hidden = options.length <= 1;
+      for (const item of options.length > 1 ? options : []) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "secondary";
-        button.textContent = `${item.name} (#${item.id})`;
+        button.textContent = `${item.name} (#${item.id}) · ${item.location} · row ${item.index}`;
         button.addEventListener("click", () => {
           itemSelect.value = String(item.index);
           updateObservation();
@@ -246,9 +248,9 @@
         });
         suggestionButtons.appendChild(button);
       }
-      matchHelp.textContent = matches.length === 1
-        ? `Suggested from OCR: ${matches[0].name} (#${matches[0].id}). Verify before saving.`
-        : "No unique exact-name match. Select the correct item; possible matches are not verified.";
+      matchHelp.textContent = selected
+        ? `Suggested from OCR: ${selected.name} (#${selected.id}). Verify before saving.`
+        : "No unique OCR match. Select the correct item; possible matches are not verified.";
       const roman = /^(?:X{0,2}(?:IX|IV|V?I{0,3})|XXX)$/;
       const distiller = result.stats.distiller_class;
       const invalid = distiller && distiller !== "Perfected only" && !roman.test(distiller);

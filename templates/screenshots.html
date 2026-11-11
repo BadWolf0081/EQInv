@@ -39,7 +39,7 @@
       <div id="name-suggestions" hidden><p class="detail-context">Possible OCR matches — choose only after comparing the screenshot:</p><div id="suggestion-buttons"></div></div>
       <label>Compatible augment slot types <span>The slot types this augment fits into, separated by |; leave blank if unknown. These are not the item's own sockets.</span><input id="types" type="text"></label>
       <p id="distiller-warning" class="notice error" role="alert" hidden></p>
-      <label>Stats (JSON) <span>Review every field. Base and heroic attributes are separate, e.g. "str": 64 and "heroic_str": 89. Item sockets use numeric fields such as "socket_1_type": 3. ac, hp, mana, and endurance must be integers; distiller_class must be I–XXX or "Perfected only".</span><textarea id="stats" rows="10"></textarea></label>
+      <label>Stats (JSON) <span>Review every field. Base and heroic attributes are separate, e.g. "str": 64 and "heroic_str": 89. Item sockets use numeric fields such as "socket_1_type": 3. ac, hp, mana, and endurance must be integers; distiller_class must be I–XXX or "Perfected only". OCR readings XIL and XILL are suggested as XII and XIII; verify against the screenshot.</span><textarea id="stats" rows="10"></textarea></label>
       <label>Recognized text <span>Corrected text is saved with the stats if you select that option.</span><textarea id="raw-text" rows="12"></textarea></label>
       <label class="confirmation"><input id="save-stats" type="checkbox" checked> Save reviewed stats and augment types</label>
       <p class="detail-context">More populated stats replace the existing record. Equal counts require confirmation; fewer stats preserve omitted fields and ask before replacing conflicts. Uncheck to save only the screenshot.</p>
