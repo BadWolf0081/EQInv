@@ -14,6 +14,7 @@ from PIL import Image
 from app import app, dashboard
 from inventory import parse_inventory
 from test_inventory import EXPORT
+from test_icon_detection import item_window
 
 
 class Cursor:
@@ -195,6 +196,27 @@ class AppTests(unittest.TestCase):
         no_image = self.client.get("/uploads/1/items/0").get_data(as_text=True)
         self.assertIn("No saved screenshot for this item yet.", no_image)
         self.assertIn("First aug", no_image)
+
+    def test_inventory_icons_are_derived_from_saved_screenshots_without_overwriting(self):
+        parsed = parse_inventory(EXPORT, "Example_Test-Inventory.txt")
+        self.state["uploads"].append({"id": 1, "filename": parsed["filename"], "character_name": parsed["character"],
+                                      "server_name": parsed["server"], "uploaded_at": "2026-01-01",
+                                      "rows_json": json.dumps(parsed["rows"])})
+        image = io.BytesIO()
+        item_window().save(image, format="PNG")
+        self.state["screenshots"][1] = [image.getvalue()]
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertIn('src="/items/1/icon"', page)
+        response = self.client.get("/items/1/icon")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Image.open(io.BytesIO(response.data)).getpixel((0, 0)), (240, 20, 20))
+        self.assertEqual(self.state["icons"], {})
+        self.state["icons"][1] = b"manually selected"
+        self.assertEqual(self.client.get("/items/1/icon").data, b"manually selected")
+        invalid = io.BytesIO()
+        Image.new("RGB", (240, 180)).save(invalid, format="PNG")
+        self.state["screenshots"][2] = [invalid.getvalue()]
+        self.assertEqual(self.client.get("/items/2/icon").status_code, 404)
 
     def test_rejects_malformed_upload_without_database_write(self):
         response = self.client.post("/upload", data={"csrf_token": self.token, "inventory": (io.BytesIO(b"invalid"), "bad.txt")},

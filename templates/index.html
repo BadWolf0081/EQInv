@@ -69,7 +69,7 @@
         <div class="gear-grid">
           {% for gear in data.equipment %}
           <article class="gear-card{% if not gear.row.item_id %} empty-gear{% endif %}">
-            <div class="gear-top">{% if gear.row.has_icon %}{{ item_icon(gear.row, 'gear') }}{% else %}<span class="slot-icon" aria-hidden="true">✧</span>{% endif %}<div><div class="slot-name">{{ gear.row.location }}{% if gear.row.location in ['Ear', 'Wrist', 'Fingers'] %} {{ gear.number }}{% endif %}</div><h3>{% if gear.row.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=gear.row.index) }}">{{ gear.row.name }}</a>{% else %}{{ gear.row.name }}{% endif %}</h3>{% if gear.row.item_id %}<span class="item-id">ITEM #{{ gear.row.item_id }}</span>{% endif %}</div></div>
+            <div class="gear-top">{% if gear.row.has_icon or gear.row.has_screenshot %}{{ item_icon(gear.row, 'gear') }}{% else %}<span class="slot-icon" aria-hidden="true">✧</span>{% endif %}<div><div class="slot-name">{{ gear.row.location }}{% if gear.row.location in ['Ear', 'Wrist', 'Fingers'] %} {{ gear.number }}{% endif %}</div><h3>{% if gear.row.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=gear.row.index) }}">{{ gear.row.name }}</a>{% else %}{{ gear.row.name }}{% endif %}</h3>{% if gear.row.item_id %}<span class="item-id">ITEM #{{ gear.row.item_id }}</span>{% endif %}</div></div>
             {% if gear.row.catalog and gear.row.catalog.stats %}<div class="gear-stats">{% for key, value in gear.row.catalog.stats.items() if value != '' and key != 'ocr_text' %}<span>{{ key|upper }} {{ value }}</span>{% endfor %}</div>{% endif %}
             {% if gear.augments %}
             <ul class="aug-list">

@@ -14,6 +14,7 @@ from flask import Flask, Response, abort, flash, jsonify, redirect, render_templ
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
+from icon_detection import automatic_icon
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
 from item_matching import suggest_item_names
 from screenshot_ocr import extract_candidates, load_screenshot, recognize_screenshot, validate_review
@@ -267,13 +268,22 @@ def item_icon(item_id):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT image_data FROM item_icons WHERE item_id = %s", (item_id,))
                 image = cursor.fetchone()
+                if not image:
+                    cursor.execute("SELECT image_data FROM item_screenshots WHERE item_id = %s ORDER BY id DESC LIMIT 1",
+                                   (item_id,))
+                    screenshot = cursor.fetchone()
+                    if screenshot:
+                        source, _ = load_screenshot(screenshot["image_data"])
+                        icon = automatic_icon(source)
+                        if icon is not None:
+                            image = {"image_data": icon}
         if not image:
             abort(404)
         response = Response(image["image_data"], mimetype="image/png")
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Cache-Control"] = "no-store"
         return response
-    except (pymysql.MySQLError, OSError):
+    except (pymysql.MySQLError, OSError, ValueError):
         app.logger.exception("Unable to load item icon")
         return "Unable to load item icon. Check the server logs.", 503
 

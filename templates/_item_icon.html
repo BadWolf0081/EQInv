@@ -1,3 +1,3 @@
 {% macro item_icon(row, size='small') -%}
-  {% if row.item_id and row.has_icon %}<img class="item-icon item-icon-{{ size }}" src="{{ url_for('item_icon', item_id=row.item_id) }}" alt="" loading="lazy">{% endif %}
+  {% if row.item_id and (row.has_icon or row.has_screenshot) %}<img class="item-icon item-icon-{{ size }}" src="{{ url_for('item_icon', item_id=row.item_id) }}" alt="" loading="lazy">{% endif %}
 {%- endmacro %}

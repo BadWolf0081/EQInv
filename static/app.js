@@ -1,4 +1,8 @@
 const search = document.querySelector("#inventory-search");
+document.querySelectorAll(".inventory-slot-icon, .item-icon").forEach(image => {
+  image.addEventListener("error", () => { image.hidden = true; });
+  if (image.complete && !image.naturalWidth) image.hidden = true;
+});
 if (search) {
   const rows = [...document.querySelectorAll("#inventory-rows tr")];
   const empty = document.querySelector("#no-results");
