@@ -45,6 +45,10 @@ class Cursor:
         elif query.startswith("SELECT id FROM item_screenshots"):
             images = self.state["screenshots"].get(values[0], [])
             self.result = {"id": len(images)} if images else None
+        elif query.startswith("SELECT screenshot_id, stats_json, augments_json FROM item_stat_observations"):
+            matches = [item for item in self.state["observations"]
+                       if (item["upload_id"], item["row_index"], item["item_id"]) == tuple(values)]
+            self.result = matches[-1] if matches else None
         elif query.startswith("SELECT id, image_data FROM item_screenshots"):
             images = self.state["screenshots"].get(values[0], [])
             index = values[1] if len(values) > 1 else len(images)
@@ -67,6 +71,10 @@ class Cursor:
         elif query.startswith("INSERT INTO item_screenshots"):
             item_id, image_data = values
             self.state["screenshots"].setdefault(item_id, []).append(image_data)
+            self.lastrowid = len(self.state["screenshots"][item_id])
+        elif query.startswith("INSERT INTO item_stat_observations"):
+            keys = ("upload_id", "row_index", "item_id", "screenshot_id", "stats_json", "augments_json")
+            self.state["observations"].append(dict(zip(keys, values)))
         elif query.startswith("INSERT INTO item_data"):
             item_id, types, stats = values
             if item_id in self.state["items"]:
@@ -114,7 +122,7 @@ class Connection:
 
 class AppTests(unittest.TestCase):
     def setUp(self):
-        self.state = {"uploads": [], "items": {}, "catalog": {}, "lucy": {}, "screenshots": {}, "icons": {}, "commits": 0}
+        self.state = {"uploads": [], "items": {}, "catalog": {}, "lucy": {}, "screenshots": {}, "icons": {}, "observations": [], "commits": 0}
         self.patcher = patch("app.connect", side_effect=lambda: Connection(self.state))
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
@@ -253,6 +261,56 @@ class AppTests(unittest.TestCase):
         self.assertNotIn('<template id="augment-preview-4">', page)
         self.assertIn('<template id="augment-preview-5">', page)
         self.assertIn('data-augment-preview="0"', page)
+
+    def test_verified_observation_is_separate_and_requires_complete_aug_stats(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        self.state["items"][1] = {"item_id": 1, "aug_types_json": "[]", "stats_json": '{"hp":999}'}
+        self.state["items"][11] = {"item_id": 11, "aug_types_json": "[7]",
+                                   "stats_json": '{"hp":100}'}
+        image = io.BytesIO()
+        Image.new("RGB", (20, 10), "red").save(image, format="PNG")
+        response = self.client.post("/uploads/1/screenshots/save", data={
+            "csrf_token": self.token, "row_index": "0", "confirmed": "yes", "verify_observation": "yes",
+            "stats_json": '{"hp":1000,"mana":300,"socket_1_type":7}', "types": "",
+            "raw_text": "HP: 1000", "screenshot": (io.BytesIO(image.getvalue()), "item.png"),
+        })
+        self.assertEqual(response.status_code, 200)
+        observation = self.state["observations"][0]
+        self.assertEqual(json.loads(observation["augments_json"]),
+                         [{"item_id": 11, "name": "First aug", "socket": 1, "socket_type": 7}])
+        self.assertEqual(json.loads(self.state["items"][1]["stats_json"])["hp"], 999)
+        detail = self.client.get("/uploads/1/items/0").get_data(as_text=True)
+        self.assertIn("<dt>HP</dt><dd>900</dd>", detail)
+        self.assertIn("<dt>MANA</dt><dd>Unknown — augment contribution missing</dd>", detail)
+        self.assertIn("/items/1/screenshot/1", detail)
+        self.assertIn("no screenshot has been verified", self.client.get("/uploads/1/items/2").get_data(as_text=True))
+        self.state["items"][11]["stats_json"] = '{"hp":100,"mana":30}'
+        self.assertIn("<dt>MANA</dt><dd>270</dd>", self.client.get("/uploads/1/items/0").get_data(as_text=True))
+        observation["augments_json"] = json.dumps([{"item_id": 11, "socket_type": 14}])
+        self.assertIn("type 14 purity", self.client.get("/uploads/1/items/0").get_data(as_text=True))
+
+    def test_socket_specific_previews_and_ornament_warning(self):
+        export = (b"Location\tName\tID\tCount\tSlots\n"
+                  b"Head\tHelm\t1\t1\t4\nHead-Slot1\tEffect\t11\t1\t0\n"
+                  b"Head-Slot2\tHeroic\t12\t1\t0\nHead-Slot3\tPurity\t13\t1\t0\n"
+                  b"Head-Slot4\tOrnament\t14\t1\t0\n")
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(export), "Example_Test-Inventory.txt")
+        })
+        for item_id, stats in ((1, {"socket_1_type": 3, "socket_2_type": 5, "socket_3_type": 14, "socket_4_type": 22}),
+                               (11, {"skill_mod": "Specialize Alteration 15 % +5"}),
+                               (12, {"hp": 100, "heroic_int": 45}),
+                               (13, {"purity": 75}), (14, {})):
+            self.state["items"][item_id] = {"item_id": item_id, "aug_types_json": "[]", "stats_json": json.dumps(stats)}
+        page = self.client.get("/").get_data(as_text=True)
+        preview = page.split('<template id="augment-preview-0">')[1].split('</template>')[0]
+        self.assertIn("Skill mod: Specialize Alteration", preview)
+        self.assertIn("Heroic INT +45", preview)
+        self.assertIn("Purity 75", preview)
+        self.assertIn("Ornament installed", preview)
+        self.assertIn("ornamented appearance", self.client.get("/uploads/1/items/0").get_data(as_text=True))
 
     def test_rejects_malformed_upload_without_database_write(self):
         response = self.client.post("/upload", data={"csrf_token": self.token, "inventory": (io.BytesIO(b"invalid"), "bad.txt")},

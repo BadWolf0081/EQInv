@@ -15,6 +15,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
 from augment_preview import augment_summary
+from base_stats import calculate_base
 from icon_detection import automatic_icon
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
 from item_matching import suggest_item_names
@@ -167,10 +168,14 @@ def dashboard(upload_id=None):
             equipment[-1]["augments"].append(row)
     for gear in equipment:
         gear["row"]["preview_augments"] = [
-            {"row": aug, "summary": augment_summary(aug["catalog"])}
+            {"row": aug, "summary": augment_summary(
+                aug["catalog"], socket_type(gear["row"]["catalog"]["stats"], int(SLOT.fullmatch(aug["location"]).group(2)))
+                if gear["row"]["catalog"] and SLOT.fullmatch(aug["location"]) else None)}
             for aug in gear["augments"] if aug["item_id"]
         ]
         gear["row"]["preview_has_slots"] = bool(gear["augments"])
+        gear["row"]["ornamented"] = any(
+            entry["summary"]["slot_type"] == 22 for entry in gear["row"]["preview_augments"])
     for child in rows:
         if child["parent"] is None or not child["item_id"]:
             continue
@@ -181,8 +186,11 @@ def dashboard(upload_id=None):
         if (parent["item_id"] and parent["catalog"] and match
                 and socket_type(parent["catalog"]["stats"], int(match.group(2))) is not None):
             parent.setdefault("preview_augments", []).append(
-                {"row": child, "summary": augment_summary(child["catalog"])})
+                {"row": child, "summary": augment_summary(child["catalog"],
+                 socket_type(parent["catalog"]["stats"], int(match.group(2))))})
             parent["preview_has_slots"] = True
+            if socket_type(parent["catalog"]["stats"], int(match.group(2))) == 22:
+                parent["ornamented"] = True
     augments = []
     unknown_types = 0
     for gear in equipment:
@@ -239,6 +247,10 @@ def item_detail(upload_id, row_index):
                 cursor.execute("SELECT id FROM item_screenshots WHERE item_id = %s ORDER BY id DESC LIMIT 1",
                                (row["item_id"],))
                 screenshot = cursor.fetchone()
+                cursor.execute("SELECT screenshot_id, stats_json, augments_json FROM item_stat_observations "
+                               "WHERE upload_id = %s AND row_index = %s AND item_id = %s ORDER BY id DESC LIMIT 1",
+                               (upload_id, row_index, row["item_id"]))
+                observation = cursor.fetchone()
     except (pymysql.MySQLError, OSError, ValueError):
         app.logger.exception("Unable to load item details")
         return render_template("index.html", data=None, db_error=True), 503
@@ -251,9 +263,22 @@ def item_detail(upload_id, row_index):
         if child["socket_type"] is not None and child["catalog"] and child["catalog"]["types"]:
             child["socket_match"] = child["socket_type"] in child["catalog"]["types"]
     parent = data["rows"][row["parent"]] if row["parent"] is not None else None
+    base = None
+    if observation:
+        augments = json.loads(observation["augments_json"])
+        blocked = any(aug["socket_type"] in (None, 14) for aug in augments)
+        catalogs = {child["item_id"]: child["catalog"] for child in children if child["item_id"]}
+        base = {
+            "blocked": blocked,
+            "values": {} if blocked else calculate_base(
+                json.loads(observation["stats_json"]),
+                [catalogs.get(aug["item_id"])["stats"] if catalogs.get(aug["item_id"]) else None
+                 for aug in augments]),
+            "screenshot_id": observation["screenshot_id"],
+        }
     allakhazam_search = "https://everquest.allakhazam.com/db/search?" + urlencode({"q": row["name"]})
     return render_template("item.html", data=data, row=row, children=children, parent=parent,
-                           lucy=lucy, screenshot=screenshot, allakhazam_search=allakhazam_search)
+                           lucy=lucy, screenshot=screenshot, allakhazam_search=allakhazam_search, base=base)
 
 
 @app.route("/items/<int:item_id>/screenshot")
@@ -375,11 +400,16 @@ def screenshots(upload_id):
         data = dashboard(upload_id)
         if data is None:
             abort(404)
-        items = {}
+        items = []
         for row in data["rows"]:
-            if row["item_id"] and row["item_id"] not in items:
-                items[row["item_id"]] = {"index": row["index"], "id": row["item_id"], "name": row["name"]}
-        return render_template("screenshots.html", upload_id=upload_id, items=list(items.values()))
+            if row["item_id"]:
+                is_equipment = row["section"] == "inventory" and row["parent"] is None and row["location"] in EQUIPMENT
+                children = [child for child in data["rows"] if child["parent"] == row["index"]]
+                items.append({"index": row["index"], "id": row["item_id"], "name": row["name"],
+                              "location": row["location"], "is_equipment": is_equipment,
+                              "children": [{"location": child["location"], "name": child["name"],
+                                            "item_id": child["item_id"]} for child in children]})
+        return render_template("screenshots.html", upload_id=upload_id, items=items)
     except (pymysql.MySQLError, OSError, ValueError):
         app.logger.exception("Unable to load screenshot importer")
         return "Unable to load inventory. Check the server logs.", 503
@@ -420,7 +450,11 @@ def screenshots_save(upload_id):
         index_text = request.form.get("row_index", "")
         if not index_text.isascii() or not index_text.isdigit():
             raise ValueError("Select an item from the inventory.")
-        row = screenshot_item(upload_id, int(index_text))
+        data = dashboard(upload_id)
+        index = int(index_text)
+        if data is None or index >= len(data["rows"]) or not data["rows"][index]["item_id"]:
+            abort(404)
+        row = data["rows"][index]
         image_file = request.files.get("screenshot")
         if not image_file or not image_file.filename:
             raise ValueError("Choose an item window to save.")
@@ -429,10 +463,24 @@ def screenshots_save(upload_id):
         output = io.BytesIO()
         image.save(output, format="PNG")
         save_stats = request.form.get("save_stats") == "yes"
-        if save_stats:
+        verify_observation = request.form.get("verify_observation") == "yes"
+        if verify_observation and not (row["section"] == "inventory" and row["parent"] is None
+                                       and row["location"] in EQUIPMENT):
+            raise ValueError("Verified item observations are only supported for equipped items.")
+        if save_stats or verify_observation:
             stats, types = validate_review(request.form.get("stats_json", ""),
                                            request.form.get("types", ""),
                                            request.form.get("raw_text", ""))
+        if verify_observation:
+            augments = []
+            for child in data["rows"]:
+                if child["parent"] == index and child["item_id"]:
+                    match = SLOT.fullmatch(child["location"])
+                    if not match:
+                        raise ValueError("Unable to identify an installed augment socket.")
+                    augments.append({"item_id": child["item_id"], "name": child["name"],
+                                     "socket": int(match.group(2)),
+                                     "socket_type": socket_type(stats, int(match.group(2)))})
         with connect() as connection:
             with connection.cursor() as cursor:
                 if save_stats:
@@ -442,6 +490,13 @@ def screenshots_save(upload_id):
                     )
                 cursor.execute("INSERT INTO item_screenshots (item_id, image_data) VALUES (%s, %s)",
                                (row["item_id"], output.getvalue()))
+                if verify_observation:
+                    cursor.execute(
+                        "INSERT INTO item_stat_observations "
+                        "(upload_id, row_index, item_id, screenshot_id, stats_json, augments_json) "
+                        "VALUES (%s, %s, %s, %s, %s, %s)",
+                        (upload_id, index, row["item_id"], cursor.lastrowid,
+                         json.dumps(stats, ensure_ascii=False), json.dumps(augments, ensure_ascii=False)))
                 if icon is not None:
                     store_icon(cursor, row["item_id"], icon)
             connection.commit()

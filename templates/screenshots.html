@@ -34,7 +34,7 @@
       {% set icon_source = '' %}
       {% include '_icon_selector.html' %}
       <label>Inventory item <span id="match-help">Select the item that matches this crop.</span>
-        <select id="item-select" required><option value="">Select an item</option>{% for item in items %}<option value="{{ item.index }}">{{ item.name }} (#{{ item.id }})</option>{% endfor %}</select>
+        <select id="item-select" required><option value="">Select an item</option>{% for item in items %}<option value="{{ item.index }}">{{ item.name }} (#{{ item.id }}) · {{ item.location }} · row {{ item.index }}</option>{% endfor %}</select>
       </label>
       <div id="name-suggestions" hidden><p class="detail-context">Possible OCR matches — choose only after comparing the screenshot:</p><div id="suggestion-buttons"></div></div>
       <label>Compatible augment slot types <span>The slot types this augment fits into, separated by |; leave blank if unknown. These are not the item's own sockets.</span><input id="types" type="text"></label>
@@ -43,6 +43,12 @@
       <label>Recognized text <span>Corrected text is saved with the stats if you select that option.</span><textarea id="raw-text" rows="12"></textarea></label>
       <label class="confirmation"><input id="save-stats" type="checkbox" checked> Save reviewed stats and augment types if this item has no catalog data</label>
       <p class="detail-context">Existing catalog data is never overwritten. Uncheck the stats option to save only an image for an item with existing data.</p>
+      <div id="observation-panel" hidden>
+        <p class="detail-context">Inventory snapshot slots (compare every slot, including empty slots, against this screenshot):</p>
+        <ul id="observation-slots"></ul>
+        <label class="confirmation"><input id="verify-observation" type="checkbox"> I verified the screenshot shows exactly these installed augments and the reviewed stats above include them. Save this observation for base-stat calculation.</label>
+        <p class="detail-context">Only select this after checking every slot. Unknown augment stats are not assumed to be zero.</p>
+      </div>
       <label class="confirmation"><input id="confirmed" type="checkbox" required> I verified this crop, item, selected icon, and any values being saved.</label>
       <button type="submit">Save this item →</button>
     </form>

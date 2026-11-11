@@ -18,15 +18,14 @@ def numeric_stat(value):
     return None
 
 
-def augment_summary(catalog):
+def augment_summary(catalog, slot_type=None):
     stats = catalog["stats"] if catalog else {}
     hp = numeric_stat(stats.get("hp"))
     mana = numeric_stat(stats.get("mana"))
-    if (hp is not None and hp != 0) or (mana is not None and mana != 0):
-        return {"hp": hp, "mana": mana, "heroic": [], "heroic_value": None}
     heroics = [(label, value) for key, label in HEROIC_STATS
                for value in [numeric_stat(stats.get(key))] if value is not None and value > 0]
     largest = max((value for _, value in heroics), default=None)
-    return {"hp": hp, "mana": mana,
+    return {"hp": hp, "mana": mana, "slot_type": slot_type,
+            "skill_mod": stats.get("skill_mod", ""), "purity": numeric_stat(stats.get("purity")),
             "heroic": [label for label, value in heroics if value == largest],
             "heroic_value": largest}

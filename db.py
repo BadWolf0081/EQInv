@@ -84,6 +84,19 @@ def initialize(connection):
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB CHARACTER SET utf8mb4
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS item_stat_observations (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                upload_id BIGINT UNSIGNED NOT NULL,
+                row_index INT UNSIGNED NOT NULL,
+                item_id INT UNSIGNED NOT NULL,
+                screenshot_id BIGINT UNSIGNED NOT NULL,
+                stats_json LONGTEXT NOT NULL,
+                augments_json LONGTEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX (upload_id, row_index, id)
+            ) ENGINE=InnoDB CHARACTER SET utf8mb4
+        """)
 
         # Backfill previously saved uploads in order, preserving the first name seen.
         last_id = 0

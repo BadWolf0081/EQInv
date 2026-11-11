@@ -34,6 +34,7 @@
       {% endwith %}
       <p class="eyebrow">ITEM DETAILS · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}{% if data.upload.server_name %} · {{ data.upload.server_name }}{% endif %}</p>
       <h1>{{ item_icon(row, 'gear') }}{{ row.name }}</h1>
+      {% if row.ornamented %}<p class="notice">A type 22 ornament is installed. The saved item icon may reflect the ornamented appearance rather than the item's original appearance.</p>{% endif %}
       {% if screenshot %}<section aria-labelledby="saved-image-title"><h2 id="saved-image-title">Saved item screenshot</h2><img class="ocr-preview" src="{{ url_for('item_screenshot', item_id=row.item_id) }}" alt="Saved screenshot of {{ row.name }}"></section>{% else %}<p class="detail-context">No saved screenshot for this item yet.</p>{% endif %}
       <p class="detail-context">Item #{{ row.item_id }} · {{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }} · Count {{ row.count }}{% if row.slots is not none %} · Export slots {{ row.slots }}{% endif %}</p>
       {% if lucy %}<p class="detail-context"><a class="item-link" href="https://lucy.allakhazam.com/item.html?id={{ row.item_id }}" target="_blank" rel="noopener noreferrer">View {{ lucy.name }} on Lucy ↗</a> (opens an external site)</p>{% endif %}
@@ -46,6 +47,19 @@
         {% if screenshot %}<p><a class="item-link" href="{{ url_for('select_icon', upload_id=data.upload.id, row_index=row.index) }}">Select or replace icon from saved screenshot</a></p>{% endif %}
         {% if row.catalog and row.catalog.stats.get('ocr_text') %}<details><summary>Reviewed screenshot text</summary><pre class="ocr-text">{{ row.catalog.stats.ocr_text }}</pre></details>{% endif %}
         <p class="panel-foot">Stats and augment types come from imported data or reviewed screenshots, not the inventory export. Unknown does not mean zero.</p>
+      </section>
+      <section class="panel detail-panel" aria-labelledby="base-title">
+        <p class="eyebrow">VERIFIED SCREENSHOT OBSERVATION</p><h2 id="base-title">Calculated item stats before augments</h2>
+        {% if not base %}
+          <p>Not calculated: no screenshot has been verified against this inventory item's installed augments.</p>
+        {% elif base.blocked %}
+          <p>Not calculated: an installed augment has an unknown socket type or is a type 14 purity augment. Purity and power-source effects cannot be removed by simple subtraction.</p>
+        {% else %}
+          <p>Recorded values minus known augment contributions. This does not account for power-source or other non-augment effects.</p>
+          <dl class="details-list">{% for key, value in base['values'].items() %}<div><dt>{{ key|replace('_', ' ')|upper }}</dt><dd>{{ value if value is not none else 'Unknown — augment contribution missing' }}</dd></div>{% else %}<div><dt>Recorded numeric stats</dt><dd>None</dd></div>{% endfor %}</dl>
+        {% endif %}
+        {% if base %}<p><a class="item-link" href="{{ url_for('item_screenshot', item_id=row.item_id, screenshot_id=base.screenshot_id) }}">View verified screenshot</a></p>{% endif %}
+        <p class="panel-foot">A value is calculated only when every installed augment has an explicit numeric value for that stat; missing does not mean zero. Catalog values may include other effects. Verify results in game.</p>
       </section>
       <section class="panel detail-panel" aria-labelledby="ocr-title">
         <p class="eyebrow">SCREENSHOT IMPORT</p><h2 id="ocr-title">Read an item screenshot</h2>

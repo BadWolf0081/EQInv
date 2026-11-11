@@ -7,6 +7,11 @@ from screenshot_ocr import extract_candidates, recognize_screenshot, validate_re
 
 
 class ScreenshotTests(unittest.TestCase):
+    def test_purity_is_extracted(self):
+        stats, types = extract_candidates("Purity: 75\nThis Augmentation fits in slot types: 14")
+        self.assertEqual(stats["purity"], 75)
+        self.assertEqual(types, [14])
+
     def test_tourmaline_item_window_transcription(self):
         text = """Tourmaline of Alteration
 Description

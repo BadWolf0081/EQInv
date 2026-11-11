@@ -24,6 +24,9 @@
   const raw = document.getElementById("raw-text");
   const saveStats = document.getElementById("save-stats");
   const confirmed = document.getElementById("confirmed");
+  const observationPanel = document.getElementById("observation-panel");
+  const observationSlots = document.getElementById("observation-slots");
+  const verifyObservation = document.getElementById("verify-observation");
   let sourceUrl = null;
   let previewUrl = null;
   let crop = null;
@@ -40,6 +43,8 @@
     review.hidden = true;
     crop = null;
     confirmed.checked = false;
+    verifyObservation.checked = false;
+    observationPanel.hidden = true;
     iconSelector.dispatchEvent(new Event("clear-icon"));
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null;
@@ -156,6 +161,25 @@
     return false;
   }
 
+  function updateObservation() {
+    verifyObservation.checked = false;
+    const item = items.find(entry => String(entry.index) === itemSelect.value);
+    observationPanel.hidden = !item || !item.is_equipment;
+    observationSlots.replaceChildren();
+    if (!item || !item.is_equipment) return;
+    if (!item.children.length) {
+      const line = document.createElement("li");
+      line.textContent = "No augment slots were listed in this export; verify the item has no installed augments.";
+      observationSlots.appendChild(line);
+    }
+    for (const child of item.children) {
+      const line = document.createElement("li");
+      line.textContent = `${child.location}: ${child.item_id ? `${child.name} (#${child.item_id})` : "Empty"}`;
+      observationSlots.appendChild(line);
+    }
+  }
+  itemSelect.addEventListener("change", updateObservation);
+
   recognize.addEventListener("click", async () => {
     clearReview();
     const box = readBox();
@@ -185,6 +209,7 @@
       const text = result.raw_text.toLocaleLowerCase().replace(/\s+/g, " ");
       const matches = items.filter(item => containsItemName(text, item.name.toLocaleLowerCase().replace(/\s+/g, " ")));
       itemSelect.value = matches.length === 1 ? String(matches[0].index) : "";
+      updateObservation();
       suggestionButtons.replaceChildren();
       const options = matches.length === 1 ? [] : result.name_suggestions;
       suggestions.hidden = options.length === 0;
@@ -195,6 +220,7 @@
         button.textContent = `${item.name} (#${item.id})`;
         button.addEventListener("click", () => {
           itemSelect.value = String(item.index);
+          updateObservation();
           matchHelp.textContent = "Possible match selected. Verify it against the screenshot.";
         });
         suggestionButtons.appendChild(button);
@@ -234,6 +260,7 @@
       form.append("screenshot", crop, "item.png");
       form.append("confirmed", "yes");
       if (saveStats.checked) form.append("save_stats", "yes");
+      if (verifyObservation.checked) form.append("verify_observation", "yes");
       form.append("stats_json", stats.value);
       form.append("types", types.value);
       form.append("raw_text", raw.value);
