@@ -1,4 +1,46 @@
 import io
+from collections import Counter
+
+from PIL import Image
+
+
+def isolate_icon(image):
+    """Remove the common dark blue window texture and center the visible artwork."""
+    rgb = image.convert("RGB")
+    raw = rgb.tobytes()
+    colors = list(zip(raw[0::3], raw[1::3], raw[2::3]))
+    bins = Counter((r // 8, g // 8, b // 8) for r, g, b in colors
+                   if b > r + 5 and b > g + 5 and max(r, g, b) < 120)
+    if not bins:
+        return None
+    dominant, count = bins.most_common(1)[0]
+    if count < max(4, len(colors) // 50):
+        return None
+    center = tuple(value * 8 + 4 for value in dominant)
+    backgrounds = [
+        tuple(value * 8 + 4 for value in color)
+        for color, frequency in bins.items()
+        if frequency >= max(2, len(colors) // 500)
+        and sum((color[i] * 8 + 4 - center[i]) ** 2 for i in range(3)) <= 32 ** 2
+    ]
+    rgba = rgb.convert("RGBA")
+    values = []
+    for r, g, b in colors:
+        distance = min(sum((channel - sample[i]) ** 2 for i, channel in enumerate((r, g, b)))
+                       for sample in backgrounds) ** 0.5
+        alpha = min(255, max(0, round((distance - 10) * 255 / 15)))
+        values.append((r, g, b, alpha))
+    rgba.putdata(values)
+    bounds = rgba.getchannel("A").point(lambda value: 255 if value >= 128 else 0).getbbox()
+    if bounds is None:
+        return None
+    artwork = rgba.crop(bounds)
+    if artwork.width < 2 or artwork.height < 2:
+        return None
+    side = max(artwork.size) + max(2, round(max(artwork.size) * 0.08))
+    result = Image.new("RGBA", (side, side))
+    result.paste(artwork, ((side - artwork.width) // 2, (side - artwork.height) // 2))
+    return result
 
 
 def automatic_icon(image):
@@ -61,10 +103,13 @@ def automatic_icon(image):
                     break
             else:
                 run = 0
-    size = round(28 * scale)
-    x, y = tab_x, round(tab_y + 20 * scale)
-    if x + size > width or y + size > height:
+    crop_width, crop_height = round(30 * scale), round(36 * scale)
+    x, y = tab_x, round(tab_y + 17 * scale)
+    if x + crop_width > width or y + crop_height > height:
+        return None
+    icon = isolate_icon(image.crop((x, y, x + crop_width, y + crop_height)))
+    if icon is None:
         return None
     output = io.BytesIO()
-    image.crop((x, y, x + size, y + size)).save(output, format="PNG")
+    icon.save(output, format="PNG")
     return output.getvalue()

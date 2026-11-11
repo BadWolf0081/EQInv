@@ -209,7 +209,9 @@ class AppTests(unittest.TestCase):
         self.assertIn('src="/items/1/icon"', page)
         response = self.client.get("/items/1/icon")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Image.open(io.BytesIO(response.data)).getpixel((0, 0)), (240, 20, 20))
+        icon = Image.open(io.BytesIO(response.data))
+        self.assertEqual(icon.getpixel((0, 0))[3], 0)
+        self.assertEqual(icon.getpixel((icon.width // 2, icon.height // 2)), (240, 20, 20, 255))
         self.assertEqual(self.state["icons"], {})
         self.state["icons"][1] = b"manually selected"
         self.assertEqual(self.client.get("/items/1/icon").data, b"manually selected")

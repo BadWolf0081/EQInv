@@ -1,7 +1,12 @@
 const search = document.querySelector("#inventory-search");
 document.querySelectorAll(".inventory-slot-icon, .item-icon").forEach(image => {
-  image.addEventListener("error", () => { image.hidden = true; });
-  if (image.complete && !image.naturalWidth) image.hidden = true;
+  function showFallback() {
+    image.hidden = true;
+    const placeholder = image.parentElement.querySelector(".slot-initial");
+    if (placeholder) placeholder.hidden = false;
+  }
+  image.addEventListener("error", showFallback);
+  if (image.complete && !image.naturalWidth) showFallback();
 });
 if (search) {
   const rows = [...document.querySelectorAll("#inventory-rows tr")];

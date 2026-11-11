@@ -4,7 +4,7 @@
     <a class="inventory-slot" href="{{ url_for('item_detail', upload_id=upload_id, row_index=row.index) }}"
        aria-label="{{ slot.label }}: {{ row.name }}" title="{{ slot.label }}: {{ row.name }}"
        {% if row.has_screenshot %}data-item-screenshot="{{ url_for('item_screenshot', item_id=row.item_id) }}" data-item-name="{{ row.name }}"{% endif %}>
-      <span class="slot-initial" aria-hidden="true">{{ slot.label[:2]|upper }}</span>
+      <span class="slot-initial" aria-hidden="true"{% if row.has_icon or row.has_screenshot %} hidden{% endif %}>{{ slot.label[:2]|upper }}</span>
       {% if row.has_icon or row.has_screenshot %}<img class="inventory-slot-icon" src="{{ url_for('item_icon', item_id=row.item_id) }}" alt="" loading="lazy">{% endif %}
       <span class="inventory-slot-label">{{ slot.label }}</span>
     </a>
