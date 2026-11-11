@@ -15,7 +15,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
 from augment_preview import augment_summary, numeric_stat
-from augment_list import STAT_KEYS, collect_augments, filter_sort_augments
+from augment_list import NON_AUGMENT_ITEM_IDS, STAT_KEYS, collect_augments, filter_sort_augments
 from base_stats import calculate_base
 from icon_detection import automatic_icon
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
@@ -232,6 +232,9 @@ def augment_list(upload_id):
         if data is None:
             abort(404)
         entries = collect_augments(data["rows"])
+        excluded = [row for row in data["rows"]
+                    if row["item_id"] in NON_AUGMENT_ITEM_IDS and row["catalog"]
+                    and row["catalog"]["types"]]
     except (pymysql.MySQLError, OSError, ValueError):
         app.logger.exception("Unable to load augments")
         return "Unable to load augments. Check the server logs.", 503
@@ -258,7 +261,7 @@ def augment_list(upload_id):
         results = filter_sort_augments(entries, search, kind, aug_type, stat, direction, minimum)
         for entry in results:
             entry["sort_value"] = numeric_stat(entry["stats"].get(stat)) if stat != "name" else None
-        return render_template("augments.html", data=data, entries=results, total=len(entries),
+        return render_template("augments.html", data=data, entries=results, total=len(entries), excluded=excluded,
                                stats=stats, stat=stat, direction=direction, kind=kind,
                                search=search, type_text=type_text, minimum_text=minimum_text)
     except ValueError as exc:
@@ -277,6 +280,9 @@ def index():
 
 @app.route("/uploads/<int:upload_id>/items/<int:row_index>")
 def item_detail(upload_id, row_index):
+    stat_view = request.args.get("stats", "catalog")
+    if stat_view not in ("catalog", "base"):
+        return "Invalid item stats view.", 400
     try:
         data = dashboard(upload_id)
         if data is None or row_index >= len(data["rows"]) or not data["rows"][row_index]["item_id"]:
@@ -320,7 +326,10 @@ def item_detail(upload_id, row_index):
         }
     allakhazam_search = "https://everquest.allakhazam.com/db/search?" + urlencode({"q": row["name"]})
     return render_template("item.html", data=data, row=row, children=children, parent=parent,
-                           lucy=lucy, screenshot=screenshot, allakhazam_search=allakhazam_search, base=base)
+                           lucy=lucy, screenshot=screenshot, allakhazam_search=allakhazam_search, base=base,
+                           stat_view=stat_view,
+                           non_augment_mismatch=(row["item_id"] in NON_AUGMENT_ITEM_IDS
+                                                 and row["catalog"] and row["catalog"]["types"]))
 
 
 @app.route("/items/<int:item_id>/screenshot")

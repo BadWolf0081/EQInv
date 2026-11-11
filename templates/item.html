@@ -34,32 +34,37 @@
       {% endwith %}
       <p class="eyebrow">ITEM DETAILS · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}{% if data.upload.server_name %} · {{ data.upload.server_name }}{% endif %}</p>
       <h1>{{ item_icon(row, 'gear') }}{{ row.name }}</h1>
+      {% if non_augment_mismatch %}<p class="notice error" role="alert">This item is a known distiller, not an augment, but its catalog record has compatible augment types. Its saved stats, screenshot or icon may belong to a different item. Review them before using this record; no data was deleted.</p>{% endif %}
       {% if row.ornamented %}<p class="notice">A type 22 ornament is installed. The saved item icon may reflect the ornamented appearance rather than the item's original appearance.</p>{% endif %}
-      {% if screenshot %}<section aria-labelledby="saved-image-title"><h2 id="saved-image-title">Saved item screenshot</h2><img class="ocr-preview" src="{{ url_for('item_screenshot', item_id=row.item_id) }}" alt="Saved screenshot of {{ row.name }}"></section>{% else %}<p class="detail-context">No saved screenshot for this item yet.</p>{% endif %}
+      {% if screenshot %}<section aria-labelledby="saved-image-title"><h2 id="saved-image-title">Saved item screenshot</h2><img class="ocr-preview" src="{{ url_for('item_screenshot', item_id=row.item_id) }}" alt="Saved screenshot of {{ row.name }}"><p><a class="item-link" href="{{ url_for('select_icon', upload_id=data.upload.id, row_index=row.index) }}">Manually select or replace this item's icon →</a></p><p class="detail-context">Drag around the icon in the saved screenshot. A manually selected icon takes precedence over automatic extraction.</p></section>{% else %}<p class="detail-context">No saved screenshot for this item yet. Import an item screenshot first to manually select its icon.</p>{% endif %}
       <p class="detail-context">Item #{{ row.item_id }} · {{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }} · Count {{ row.count }}{% if row.slots is not none %} · Export slots {{ row.slots }}{% endif %}</p>
       {% if lucy %}<p class="detail-context"><a class="item-link" href="https://lucy.allakhazam.com/item.html?id={{ row.item_id }}" target="_blank" rel="noopener noreferrer">View {{ lucy.name }} on Lucy ↗</a> (opens an external site)</p>{% endif %}
       <p class="detail-context"><a class="item-link" href="{{ allakhazam_search }}" target="_blank" rel="noopener noreferrer">Search Allakhazam for {{ row.name }} ↗</a> (opens an external site; check the item ID in the results)</p>
       {% if parent and parent.item_id %}<p class="detail-context">Inside <a class="item-link" {% if parent.preview_augments is defined %}data-augment-preview="{{ parent.index }}"{% endif %} href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=parent.index) }}">{{ parent.name }}</a></p>{% endif %}
       <section class="panel detail-panel" aria-labelledby="stats-title">
-        <p class="eyebrow">CATALOG DATA</p>
+        <p class="eyebrow">ITEM STAT VIEWS</p>
         <h2 id="stats-title">Item stats</h2>
+        <nav class="stat-view-toggle" aria-label="Item stat view">
+          <a class="item-link" {% if stat_view == 'catalog' %}aria-current="page"{% endif %} href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=row.index, stats='catalog') }}#stats-title">Recorded catalog stats</a>
+          <a class="item-link" {% if stat_view == 'base' %}aria-current="page"{% endif %} href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=row.index, stats='base') }}#stats-title">Without augment stats</a>
+        </nav>
+        {% if stat_view == 'catalog' %}
         {{ item_stats(row) }}
-        {% if screenshot %}<p><a class="item-link" href="{{ url_for('select_icon', upload_id=data.upload.id, row_index=row.index) }}">Select or replace icon from saved screenshot</a></p>{% endif %}
         {% if row.catalog and row.catalog.stats.get('ocr_text') %}<details><summary>Reviewed screenshot text</summary><pre class="ocr-text">{{ row.catalog.stats.ocr_text }}</pre></details>{% endif %}
         <p class="panel-foot">Stats and augment types come from imported data or reviewed screenshots, not the inventory export. Unknown does not mean zero.</p>
-      </section>
-      <section class="panel detail-panel" aria-labelledby="base-title">
-        <p class="eyebrow">VERIFIED SCREENSHOT OBSERVATION</p><h2 id="base-title">Calculated item stats before augments</h2>
+        {% else %}
+        <h3>Calculated item stats before augments</h3>
         {% if not base %}
-          <p>Not calculated: no screenshot has been verified against this inventory item's installed augments.</p>
+          <p>Not calculated: no screenshot has been verified against this inventory item's installed augments. Open the screenshot importer and check the option to verify its augment slots and stats.</p>
         {% elif base.blocked %}
           <p>Not calculated: an installed augment has an unknown socket type or is a type 13 or type 14 purity augment. Purity and power-source effects cannot be removed by simple subtraction.</p>
         {% else %}
-          <p>Recorded values minus known augment contributions. This does not account for power-source or other non-augment effects.</p>
+          <p>Verified screenshot values minus the recorded contributions of its confirmed augments. These are not necessarily the current catalog totals; power-source and other non-augment effects are not accounted for.</p>
           <dl class="details-list">{% for key, value in base['values'].items() %}<div><dt>{{ key|replace('_', ' ')|upper }}</dt><dd>{{ value if value is not none else 'Unknown — augment contribution missing' }}</dd></div>{% else %}<div><dt>Recorded numeric stats</dt><dd>None</dd></div>{% endfor %}</dl>
         {% endif %}
         {% if base %}<p><a class="item-link" href="{{ url_for('item_screenshot', item_id=row.item_id, screenshot_id=base.screenshot_id) }}">View verified screenshot</a></p>{% endif %}
-        <p class="panel-foot">A value is calculated only when every installed augment has an explicit numeric value for that stat; missing does not mean zero. Catalog values may include other effects. Verify results in game.</p>
+        <p class="panel-foot">A value is calculated only when every confirmed augment has an explicit numeric value for that stat; missing does not mean zero. Augment values come from the current shared catalog. Verify results in game.</p>
+        {% endif %}
       </section>
       <section class="panel detail-panel" aria-labelledby="ocr-title">
         <p class="eyebrow">SCREENSHOT IMPORT</p><h2 id="ocr-title">Read an item screenshot</h2>

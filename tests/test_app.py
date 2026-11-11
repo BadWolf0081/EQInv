@@ -286,17 +286,25 @@ class AppTests(unittest.TestCase):
         self.assertEqual(json.loads(observation["augments_json"]),
                          [{"item_id": 11, "name": "First aug", "socket": 1, "socket_type": 7}])
         self.assertEqual(json.loads(self.state["items"][1]["stats_json"])["hp"], 999)
-        detail = self.client.get("/uploads/1/items/0").get_data(as_text=True)
+        catalog = self.client.get("/uploads/1/items/0").get_data(as_text=True)
+        self.assertIn("<dt>HP</dt><dd>999</dd>", catalog)
+        self.assertIn("?stats=base#stats-title", catalog)
+        self.assertNotIn("<dt>HP</dt><dd>900</dd>", catalog)
+        detail = self.client.get("/uploads/1/items/0?stats=base").get_data(as_text=True)
         self.assertIn("<dt>HP</dt><dd>900</dd>", detail)
         self.assertIn("<dt>MANA</dt><dd>Unknown — augment contribution missing</dd>", detail)
+        self.assertIn("not necessarily the current catalog totals", detail)
+        self.assertIn("?stats=catalog#stats-title", detail)
+        self.assertNotIn("<dt>HP</dt><dd>999</dd>", detail)
         self.assertIn("/items/1/screenshot/1", detail)
-        self.assertIn("no screenshot has been verified", self.client.get("/uploads/1/items/2").get_data(as_text=True))
+        self.assertEqual(self.client.get("/uploads/1/items/0?stats=invalid").status_code, 400)
+        self.assertIn("no screenshot has been verified", self.client.get("/uploads/1/items/2?stats=base").get_data(as_text=True))
         self.state["items"][11]["stats_json"] = '{"hp":100,"mana":30}'
-        self.assertIn("<dt>MANA</dt><dd>270</dd>", self.client.get("/uploads/1/items/0").get_data(as_text=True))
+        self.assertIn("<dt>MANA</dt><dd>270</dd>", self.client.get("/uploads/1/items/0?stats=base").get_data(as_text=True))
         observation["augments_json"] = json.dumps([{"item_id": 11, "socket_type": 14}])
-        self.assertIn("type 14 purity", self.client.get("/uploads/1/items/0").get_data(as_text=True))
+        self.assertIn("type 14 purity", self.client.get("/uploads/1/items/0?stats=base").get_data(as_text=True))
         observation["augments_json"] = json.dumps([{"item_id": 11, "socket_type": 13}])
-        self.assertIn("type 13 or type 14 purity", self.client.get("/uploads/1/items/0").get_data(as_text=True))
+        self.assertIn("type 13 or type 14 purity", self.client.get("/uploads/1/items/0?stats=base").get_data(as_text=True))
 
     def test_socket_specific_previews_and_ornament_warning(self):
         export = (b"Location\tName\tID\tCount\tSlots\n"
@@ -422,6 +430,33 @@ class AppTests(unittest.TestCase):
         for query in ("stat=bad", "type=999", "stat=name&min=1", "direction=bad", "min=nan"):
             self.assertEqual(self.client.get("/uploads/1/augments?" + query).status_code, 400)
         self.assertEqual(self.client.get("/uploads/999/augments").status_code, 404)
+
+    def test_known_distiller_with_misassigned_augment_stats_is_excluded_and_flagged(self):
+        export = (b"Location\tName\tID\tCount\tSlots\n"
+                  b"Primary\tSword\t1\t1\t1\n"
+                  b"Primary-Slot1\tShimmering Black Pearl\t93994\t1\t0\n"
+                  b"General 1\tBag\t2\t1\t2\n"
+                  b"General 1-Slot1\tPerfected Augmentation Distiller\t52023\t9\t0\n"
+                  b"General 1-Slot2\tSimilar named augment\t99\t1\t0\n")
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(export), "Example_Test-Inventory.txt")
+        })
+        for item_id in (52023, 93994, 99):
+            self.state["items"][item_id] = {"item_id": item_id, "aug_types_json": "[7,8]",
+                                           "stats_json": '{"hp":350,"item_flags":"Lore, Augmentation"}'}
+        original = dict(self.state["items"][52023])
+        page = self.client.get("/uploads/1/augments").get_data(as_text=True)
+        table = page.split("<tbody>")[1].split("</tbody>")[0]
+        self.assertNotIn("Perfected Augmentation Distiller", table)
+        self.assertIn("Shimmering Black Pearl", table)
+        self.assertIn("Similar named augment", table)
+        self.assertIn("Known non-augment items", page)
+        self.assertIn("/uploads/1/items/3", page)
+        detail = self.client.get("/uploads/1/items/3").get_data(as_text=True)
+        self.assertIn("known distiller, not an augment", detail)
+        self.assertEqual(self.state["items"][52023], original)
+        self.state["items"][52023]["aug_types_json"] = "[]"
+        self.assertNotIn("Known non-augment items", self.client.get("/uploads/1/augments").get_data(as_text=True))
 
     def test_screenshot_catalog_update_confirmation_and_concurrent_change(self):
         self.client.post("/upload", data={
@@ -962,6 +997,9 @@ class AppTests(unittest.TestCase):
             pngs.append(out.getvalue())
         self.state["screenshots"][11] = pngs
         url = "/uploads/1/items/1/icon"
+        detail = self.client.get("/uploads/1/items/1").get_data(as_text=True)
+        self.assertIn('href="/uploads/1/items/1/icon"', detail)
+        self.assertIn("Manually select or replace this item", detail)
         self.assertIn(b'/items/11/screenshot/2', self.client.get(url).data)
         fields = {"csrf_token": self.token, "screenshot_id": "1", "confirmed": "yes",
                   "icon_x": "0", "icon_y": "0", "icon_width": "5", "icon_height": "5"}

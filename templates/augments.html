@@ -17,6 +17,11 @@
     <p class="eyebrow">AUGMENT COMPARISON · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}</p>
     <h1>Augments &amp; stats</h1>
     <p class="detail-context">Showing this inventory snapshot: installed augments and loose items with recorded compatible augment types. Loose augments without known types cannot be identified. Values are shared catalog data, not historical snapshots.</p>
+    {% if excluded %}
+    <div class="notice" role="status">Known non-augment items with recorded augment types were excluded. Their saved data may have been attached to the wrong item; review it before using it elsewhere.
+      <ul>{% for row in excluded %}<li><a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=row.index) }}">{{ row.name }} (#{{ row.item_id }}, {{ row.location }})</a></li>{% endfor %}</ul>
+    </div>
+    {% endif %}
     <form class="panel detail-panel augment-filters" method="get">
       <label>Search name, location, ID or stats<input type="search" name="q" value="{{ search }}"></label>
       <label>Location<select name="kind">

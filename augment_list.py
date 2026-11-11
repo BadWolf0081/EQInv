@@ -5,12 +5,13 @@ from socket_types import socket_type
 
 
 STAT_KEYS = ADDITIVE_STATS + ("purity",)
+NON_AUGMENT_ITEM_IDS = frozenset({52023})
 
 
 def collect_augments(rows):
     results = []
     for row in rows:
-        if not row["item_id"]:
+        if not row["item_id"] or row["item_id"] in NON_AUGMENT_ITEM_IDS:
             continue
         parent = rows[row["parent"]] if row["parent"] is not None else None
         match = SLOT.fullmatch(row["location"])
