@@ -376,6 +376,53 @@ class AppTests(unittest.TestCase):
         self.assertNotIn("Ornament", result)
         self.assertIn("HP 100", result)
 
+    def test_augment_browser_filters_sorts_and_preserves_rows(self):
+        export = (b"Location\tName\tID\tCount\tSlots\n"
+                  b"Primary\tSword\t1\t1\t2\nPrimary-Slot1\tFirst aug\t11\t1\t0\n"
+                  b"Primary-Slot2\tUnknown aug\t12\t1\t0\n"
+                  b"Face\tMask\t2\t1\t1\nFace-Slot1\tFirst aug\t11\t1\t0\n"
+                  b"General 1\tBag\t3\t1\t3\nGeneral 1-Slot1\tLoose aug\t13\t2\t0\n"
+                  b"General 1-Slot2\tPotion\t14\t1\t0\n"
+                  b"General 1-Slot3\tStored sword\t15\t1\t1\n"
+                  b"General 1-Slot3-Slot1\tStored aug\t16\t1\t0\n")
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(export), "Example_Test-Inventory.txt")
+        })
+        for item_id, types, stats in ((1, [], {"socket_1_type": 7}), (11, [7, 8], {"hp": 0, "heroic_int": "20"}),
+                                      (13, [8], {"hp": 100, "skill_mod": "Specialize Alteration"}),
+                                      (15, [], {"socket_1_type": 5}), (16, [], {"hp": "50"})):
+            self.state["items"][item_id] = {"item_id": item_id, "aug_types_json": json.dumps(types),
+                                           "stats_json": json.dumps(stats)}
+        self.assertIn(b"Browse and compare augments", self.client.get("/").data)
+        response = self.client.get("/uploads/1/augments")
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        table = page.split("<tbody>")[1].split("</tbody>")[0]
+        self.assertIn("5 of 5 augment rows", page)
+        self.assertEqual(table.count(">First aug</a>"), 2)
+        self.assertNotIn(">Potion</a>", table)
+        self.assertLess(table.index(">First aug</a>"), table.index(">Stored aug</a>"))
+        self.assertLess(table.index(">Stored aug</a>"), table.index(">Loose aug</a>"))
+        self.assertLess(table.index(">Loose aug</a>"), table.index(">Unknown aug</a>"))
+        self.assertIn("SPECIALIZE ALTERATION", table.upper())
+        response = self.client.get("/uploads/1/augments?stat=hp&direction=desc&type=8&min=1")
+        table = response.get_data(as_text=True).split("<tbody>")[1].split("</tbody>")[0]
+        self.assertIn(">Loose aug</a>", table)
+        self.assertNotIn(">First aug</a>", table)
+        response = self.client.get("/uploads/1/augments?stat=hp&direction=desc")
+        table = response.get_data(as_text=True).split("<tbody>")[1].split("</tbody>")[0]
+        self.assertLess(table.index(">Loose aug</a>"), table.index(">Stored aug</a>"))
+        self.assertLess(table.index(">First aug</a>"), table.index(">Unknown aug</a>"))
+        self.assertIn(">Loose aug</a>", self.client.get("/uploads/1/augments?q=alteration").get_data(as_text=True))
+        response = self.client.get("/uploads/1/augments?stat=heroic_int&kind=equipped&min=20")
+        self.assertEqual(response.get_data(as_text=True).count(">First aug</a>"), 2)
+        self.assertIn(">Stored aug</a>", self.client.get("/uploads/1/augments?type=5").get_data(as_text=True))
+        self.assertNotIn(">Unknown aug</a>", self.client.get("/uploads/1/augments?kind=loose").get_data(as_text=True))
+        self.assertIn(">Unknown aug</a>", self.client.get("/uploads/1/augments?q=unknown").get_data(as_text=True))
+        for query in ("stat=bad", "type=999", "stat=name&min=1", "direction=bad", "min=nan"):
+            self.assertEqual(self.client.get("/uploads/1/augments?" + query).status_code, 400)
+        self.assertEqual(self.client.get("/uploads/999/augments").status_code, 404)
+
     def test_screenshot_catalog_update_confirmation_and_concurrent_change(self):
         self.client.post("/upload", data={
             "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")

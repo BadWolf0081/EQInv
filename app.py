@@ -14,7 +14,8 @@ from flask import Flask, Response, abort, flash, jsonify, redirect, render_templ
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
-from augment_preview import augment_summary
+from augment_preview import augment_summary, numeric_stat
+from augment_list import STAT_KEYS, collect_augments, filter_sort_augments
 from base_stats import calculate_base
 from icon_detection import automatic_icon
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
@@ -222,6 +223,46 @@ def dashboard(upload_id=None):
             for number in range(1, 11)]
     return {"upload": upload, "equipment": equipment, "augments": augments,
             "unknown_types": unknown_types, "rows": rows, "paperdoll": paperdoll, "bags": bags}
+
+
+@app.route("/uploads/<int:upload_id>/augments")
+def augment_list(upload_id):
+    try:
+        data = dashboard(upload_id)
+        if data is None:
+            abort(404)
+        entries = collect_augments(data["rows"])
+    except (pymysql.MySQLError, OSError, ValueError):
+        app.logger.exception("Unable to load augments")
+        return "Unable to load augments. Check the server logs.", 503
+    try:
+        stats = sorted(set(STAT_KEYS) | {
+            key for entry in entries for key, value in entry["stats"].items()
+            if key not in ("ocr_text", "weight", "tribute", "required_level", "recommended_level")
+            and not key.startswith("socket_") and numeric_stat(value) is not None
+        })
+        stat = request.args.get("stat", "hp")
+        direction = request.args.get("direction", "asc")
+        kind = request.args.get("kind", "")
+        search = request.args.get("q", "").strip()
+        type_text = request.args.get("type", "").strip()
+        minimum_text = request.args.get("min", "").strip()
+        if stat not in ("name", *stats) or direction not in ("asc", "desc") or kind not in ("", "equipped", "installed", "loose"):
+            raise ValueError("Invalid sort or location filter.")
+        if type_text and (not type_text.isascii() or not type_text.isdigit() or not 1 <= int(type_text) <= 255):
+            raise ValueError("Augment type must be a number from 1 to 255.")
+        if minimum_text and (stat == "name" or numeric_stat(minimum_text) is None):
+            raise ValueError("Minimum requires a numeric stat and a whole number.")
+        aug_type = int(type_text) if type_text else None
+        minimum = numeric_stat(minimum_text) if minimum_text else None
+        results = filter_sort_augments(entries, search, kind, aug_type, stat, direction, minimum)
+        for entry in results:
+            entry["sort_value"] = numeric_stat(entry["stats"].get(stat)) if stat != "name" else None
+        return render_template("augments.html", data=data, entries=results, total=len(entries),
+                               stats=stats, stat=stat, direction=direction, kind=kind,
+                               search=search, type_text=type_text, minimum_text=minimum_text)
+    except ValueError as exc:
+        return f"Invalid augment filter: {exc}", 400
 
 
 @app.route("/", methods=["GET"])

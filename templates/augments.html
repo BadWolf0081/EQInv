@@ -1,0 +1,52 @@
+{% from '_item_icon.html' import item_icon %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Augments · Adventurer's Ledger</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body><div class="page">
+  <header class="masthead">
+    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✦</span><span>THE ADVENTURER'S <strong>LEDGER</strong></span></a>
+    <span class="masthead-note">A COMPANION FOR NORRATH</span>
+  </header>
+  <main class="item-detail">
+    <a class="item-link back-link" href="{{ url_for('index') }}">← Back to inventory</a>
+    <p class="eyebrow">AUGMENT COMPARISON · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}</p>
+    <h1>Augments &amp; stats</h1>
+    <p class="detail-context">Showing this inventory snapshot: installed augments and loose items with recorded compatible augment types. Loose augments without known types cannot be identified. Values are shared catalog data, not historical snapshots.</p>
+    <form class="panel detail-panel augment-filters" method="get">
+      <label>Search name, location, ID or stats<input type="search" name="q" value="{{ search }}"></label>
+      <label>Location<select name="kind">
+        <option value="" {% if not kind %}selected{% endif %}>All locations</option>
+        <option value="equipped" {% if kind == 'equipped' %}selected{% endif %}>Installed in equipped gear</option>
+        <option value="installed" {% if kind == 'installed' %}selected{% endif %}>Installed in stored items</option>
+        <option value="loose" {% if kind == 'loose' %}selected{% endif %}>Loose or location unknown</option>
+      </select></label>
+      <label>Compatible or installed type<input type="number" name="type" min="1" max="255" value="{{ type_text }}"></label>
+      <label>Sort by<select name="stat">
+        <option value="name" {% if stat == 'name' %}selected{% endif %}>Name</option>
+        {% for key in stats %}<option value="{{ key }}" {% if stat == key %}selected{% endif %}>{{ key|replace('_', ' ')|upper }}</option>{% endfor %}
+      </select></label>
+      <label>Order<select name="direction"><option value="asc" {% if direction == 'asc' %}selected{% endif %}>Lowest / A–Z first</option><option value="desc" {% if direction == 'desc' %}selected{% endif %}>Highest / Z–A first</option></select></label>
+      <label>Minimum selected stat<input type="number" name="min" step="1" value="{{ minimum_text }}"></label>
+      <div class="augment-filter-actions"><button type="submit">Apply filters</button><a class="item-link" href="{{ url_for('augment_list', upload_id=data.upload.id) }}">Clear filters</a></div>
+    </form>
+    <p class="detail-context">{{ entries|length }} of {{ total }} augment rows · Unknown or nonnumeric sort values appear last, not as zero. Minimum excludes unknown values.</p>
+    <div class="panel table-wrap"><table>
+      <thead><tr><th>Augment</th><th>Location</th><th>Compatible types</th><th>Installed socket</th>{% if stat != 'name' %}<th>{{ stat|replace('_', ' ')|upper }}</th>{% endif %}<th>Recorded values</th></tr></thead>
+      <tbody>{% for entry in entries %}
+        <tr><td>{{ item_icon(entry.row) }}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=entry.row.index) }}">{{ entry.row.name }}</a><br><small>#{{ entry.row.item_id }} · row {{ entry.row.index }} · count {{ entry.row.count }}</small></td>
+          <td>{{ 'Loose / location unknown' if entry.kind == 'loose' else entry.kind|capitalize }} · {{ entry.row.location }}{% if entry.parent %}<br><small>Inside {{ entry.parent.name }} · row {{ entry.parent.index }}</small>{% endif %}</td>
+          <td>{{ entry.types|join(' / ') if entry.types else 'Unknown' }}</td>
+          <td>{{ entry.socket_type if entry.socket_type is not none else 'Unknown' }}</td>
+          {% if stat != 'name' %}<td>{{ entry.sort_value if entry.sort_value is not none else 'Unknown' }}</td>{% endif %}
+          <td>{% for key, value in entry.stats.items() if key != 'ocr_text' and not key.startswith('socket_') and value is not none and value != '' %}<span class="stat">{{ key|replace('_', ' ')|upper }}: {{ value }}</span>{% else %}<span class="muted">Not recorded</span>{% endfor %}</td>
+        </tr>
+      {% else %}<tr><td colspan="{{ 6 if stat != 'name' else 5 }}">No augments match these filters.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="panel-foot">Type filtering matches either the compatible types or a known installed socket type; matching types alone do not prove compatibility. Imported values may be incomplete.</p>
+  </main>
+</div></body></html>
