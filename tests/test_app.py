@@ -319,6 +319,32 @@ class AppTests(unittest.TestCase):
         self.assertIn("Ornament installed", preview)
         self.assertIn("ornamented appearance", self.client.get("/uploads/1/items/0").get_data(as_text=True))
 
+    def test_equipment_preview_shows_skill_mod_when_socket_type_is_unknown(self):
+        export = (b"Location\tName\tID\tCount\tSlots\n"
+                  b"Primary\tSword\t1\t1\t1\nPrimary-Slot1\tTopaz\t11\t1\t0\n"
+                  b"Face\tMask\t2\t1\t1\nFace-Slot1\tTourmaline\t12\t1\t0\n")
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(export), "Example_Test-Inventory.txt")
+        })
+        for item_id, skill in ((11, "Specialize Evocation 15 % +5"), (12, "Specialize Alteration 15 % +5")):
+            self.state["items"][item_id] = {"item_id": item_id, "aug_types_json": "[3]",
+                                           "stats_json": json.dumps({"skill_mod": skill})}
+        page = self.client.get("/").get_data(as_text=True)
+        for index, skill in ((0, "Specialize Evocation 15 % +5"), (2, "Specialize Alteration 15 % +5")):
+            preview = page.split(f'<template id="augment-preview-{index}">')[1].split('</template>')[0]
+            self.assertIn(f"Skill mod: {skill}", preview)
+            self.assertNotIn("Socket type 3", preview)
+        self.state["items"][11]["aug_types_json"] = "[]"
+        preview = self.client.get("/").get_data(as_text=True).split(
+            '<template id="augment-preview-0">')[1].split('</template>')[0]
+        self.assertIn("Skill mod: Specialize Evocation", preview)
+        self.state["items"][1] = {"item_id": 1, "aug_types_json": "[]",
+                                  "stats_json": '{"socket_1_type":7}'}
+        preview = self.client.get("/").get_data(as_text=True).split(
+            '<template id="augment-preview-0">')[1].split('</template>')[0]
+        self.assertIn("Socket type 7", preview)
+        self.assertNotIn("Skill mod:", preview)
+
     def test_screenshot_catalog_update_confirmation_and_concurrent_change(self):
         self.client.post("/upload", data={
             "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
