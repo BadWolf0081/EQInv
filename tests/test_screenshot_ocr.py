@@ -7,6 +7,63 @@ from screenshot_ocr import extract_candidates, recognize_screenshot, validate_re
 
 
 class ScreenshotTests(unittest.TestCase):
+    def test_tourmaline_item_window_transcription(self):
+        text = """Tourmaline of Alteration
+Description
+Tourmaline of Alteration
+Lore, No Trade, Augmentation, Prestige
+Ear Head Face Neck Shoulders Arms Back Wrist
+Range Hands Primary Secondary Fingers Chest Legs
+Feet Waist
+Size: TINY
+Tribute: 2000
+Req Level: 125
+Mana Regen: 11
+Heal Amount 30
+Spell Dmg: 30
+Clairvoyance: 30
+Skill Mod: Specialize Alteration 15 % +5 (45 Max)
+This Augmentation fits in slot types: 3 (General: Spell Effect)
+"""
+        # Some OCR output omits the colon shown in the inspection window.
+        stats, types = extract_candidates(text)
+        self.assertEqual(types, [3])
+        self.assertEqual(stats, {
+            "size": "TINY", "tribute": 2000, "required_level": 125,
+            "mana_regen": 11, "heal_amount": 30, "spell_damage": 30, "clairvoyance": 30,
+            "skill_mod": "Specialize Alteration 15 % +5 (45 Max)",
+            "item_flags": "Lore, No Trade, Augmentation, Prestige",
+            "equip_slots": "Ear Head Face Neck Shoulders Arms Back Wrist Range Hands Primary "
+                           "Secondary Fingers Chest Legs Feet Waist",
+        })
+
+    def test_do_not_mix_item_socket_types_with_augment_types(self):
+        text = ("Slot 1, Type 3 (General: Spell Effect)\nSlot 2, Type 5\n"
+                "Slot 3, Type 8\nAC: 505\n")
+        stats, types = extract_candidates(text)
+        self.assertEqual(stats, {"ac": 505})
+        self.assertEqual(types, [])
+
+    def test_user_actual_tourmaline_ocr_output(self):
+        text = ("<o orrmaiine of Aiteraton EK) Description as Tourmaline of Alteration "
+                "Lore, No Trade, Augmentation, Prestige R Ear Head Face Neck Shoulders Arms Back Wrist "
+                "Range Hands Primary Secondary Fingers Chest Legs Feet Waist Size: TINY Tribute: 2000 "
+                "Req Level: 125 Mana Regen: 11 Heal Amount 30 Spell Dmg: 30 Clairvoyance: 30 "
+                "© Unmodified Tourmaline of Alteration e Skill Mod: Specialize Alteration 15 % +5 (45 Max) "
+                "This Augmentation fits in slot types: 3 (General: Spell Effect) "
+                "You mustuse a solvent Class XXI Augmentation Distiller or higher, or use a Perfected "
+                "Augmentation Distiller, to remove this augment safely.")
+        stats, types = extract_candidates(text)
+        self.assertEqual(types, [3])
+        self.assertEqual(stats, {
+            "size": "TINY", "tribute": 2000, "required_level": 125,
+            "mana_regen": 11, "heal_amount": 30, "spell_damage": 30, "clairvoyance": 30,
+            "skill_mod": "Specialize Alteration 15 % +5 (45 Max)",
+            "item_flags": "Lore, No Trade, Augmentation, Prestige",
+            "equip_slots": "Ear Head Face Neck Shoulders Arms Back Wrist Range Hands Primary "
+                           "Secondary Fingers Chest Legs Feet Waist",
+        })
+
     def test_extract_stats_and_types_without_inventing_values(self):
         stats, types = extract_candidates(
             "Augmentation type: 7 8\nAC: 113\nSTR: +22+16 HP: +1,600 MANA: +1600 ENDUR: +1600"

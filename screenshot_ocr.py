@@ -9,24 +9,64 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 MAX_PIXELS = 20_000_000
 STAT_PATTERN = re.compile(
-    r"\b(AC|HP|MANA|ENDUR(?:ANCE)?|STR|STA|AGI|DEX|WIS|INT|CHA)\s*:\s*"
-    r"([+-]?\d[\d,]*(?:\s*\+\s*\d[\d,]*)?)",
+    r"\b(AC|HP|MANA|ENDUR(?:ANCE)?|STR|STA|AGI|DEX|WIS|INT|CHA|"
+    r"MANA\s+REGEN(?:ERATION)?|HP\s+REGEN(?:ERATION)?|ENDURANCE\s+REGEN(?:ERATION)?|"
+    r"HEAL\s+AMOUNT|SPELL\s+DMG|SPELL\s+DAMAGE|CLAIRVOYANCE|ATTACK|TRIBUTE|REQ(?:UIRED)?\s+LEVEL)"
+    r"(?:[ \t]*:[ \t]*|[ \t]+)"
+    r"([+-]?\d[\d,]*(?:[ \t]*\+[ \t]*\d[\d,]*)?)",
     re.IGNORECASE,
 )
-TYPE_PATTERN = re.compile(r"\bAugmentation\s+types?\s*:\s*([0-9][0-9\s,/|]*)", re.IGNORECASE)
+TYPE_PATTERN = re.compile(
+    r"\b(?:Augmentation\s+types?|This\s+Augmentation\s+fits\s+in\s+slot\s+types?)"
+    r"\s*:[ \t]*([0-9][0-9 \t,/|]*)", re.IGNORECASE,
+)
+SKILL_PATTERN = re.compile(
+    r"\bSkill\s+Mod[ \t]*:[ \t]*(.*?)(?=[\r\n]|\s+This\s+Augmentation\b|$)",
+    re.IGNORECASE,
+)
+SIZE_PATTERN = re.compile(r"\bSize[ \t]*:[ \t]*([A-Za-z]+)\b", re.IGNORECASE)
+FLAGS_PATTERN = re.compile(
+    r"\b((?:Lore|No Trade|No Drop|Augmentation|Prestige|Attuneable|Heirloom)"
+    r"(?:[ \t]*,[ \t]*(?:Lore|No Trade|No Drop|Augmentation|Prestige|Attuneable|Heirloom))+)\b",
+    re.IGNORECASE,
+)
+SLOT_NAMES = {"ear", "head", "face", "neck", "shoulders", "arms", "back", "wrist", "range",
+              "hands", "primary", "secondary", "finger", "fingers", "chest", "legs", "feet",
+              "waist", "charm", "ammo", "power", "source"}
+STAT_NAMES = {
+    "endur": "endurance", "mana regeneration": "mana_regen", "mana regen": "mana_regen",
+    "hp regeneration": "hp_regen", "hp regen": "hp_regen",
+    "endurance regeneration": "endurance_regen", "endurance regen": "endurance_regen",
+    "heal amount": "heal_amount", "spell dmg": "spell_damage", "spell damage": "spell_damage",
+    "req level": "required_level", "required level": "required_level",
+}
 
 
 def extract_candidates(text):
     stats = {}
     for match in STAT_PATTERN.finditer(text):
-        key = match.group(1).lower()
-        if key in ("endur", "endurance"):
-            key = "endurance"
+        label = " ".join(match.group(1).lower().split())
+        key = STAT_NAMES.get(label, label)
         value = match.group(2).replace(",", "").replace(" ", "")
-        if key in ("ac", "hp", "mana", "endurance") and re.fullmatch(r"[+-]?\d+", value):
+        if re.fullmatch(r"[+-]?\d+", value):
             stats[key] = int(value)
         else:
             stats[key] = value
+    skill = SKILL_PATTERN.search(text)
+    if skill:
+        stats["skill_mod"] = skill.group(1).strip()
+    size = SIZE_PATTERN.search(text)
+    if size:
+        stats["size"] = size.group(1).upper()
+    flags = FLAGS_PATTERN.search(text)
+    if flags:
+        stats["item_flags"] = flags.group(1).strip()
+        if size and size.start() > flags.end():
+            slot_text = text[flags.end():size.start()]
+            words = slot_text.split()
+            slots = [word for word in words if word.lower() in SLOT_NAMES]
+            if slots and all(word.lower() in SLOT_NAMES or len(word) == 1 for word in words):
+                stats["equip_slots"] = " ".join(slots)
     type_match = TYPE_PATTERN.search(text)
     types = sorted(set(map(int, re.findall(r"\d+", type_match.group(1))))) if type_match else []
     return stats, types
