@@ -11,13 +11,18 @@ from socket_types import socket_number
 
 MAX_PIXELS = 20_000_000
 STAT_PATTERN = re.compile(
-    r"\b(AC|HP|MANA|ENDUR(?:ANCE)?|STR|STA|AGI|DEX|WIS|INT|CHA|"
-    r"MANA\s+REGEN(?:ERATION)?|HP\s+REGEN(?:ERATION)?|ENDURANCE\s+REGEN(?:ERATION)?|"
-    r"HEAL\s+AMOUNT|SPELL\s+DMG|SPELL\s+DAMAGE|CLAIRVOYANCE|ATTACK|TRIBUTE|REQ(?:UIRED)?\s+LEVEL)"
+    r"\b(MANA\s+REGEN(?:ERATION)?|HP\s+REGEN(?:ERATION)?|"
+    r"END(?:UR(?:ANCE)?)?\s+REGEN(?:ERATION)?|"
+    r"HEAL\s+AMOUNT|SPELL\s+(?:DMG|DAMAGE)|CLAIRVOYANCE|ATTACK|TRIBUTE|"
+    r"REQ(?:UIRED)?\s+LEVEL|REC(?:OMMENDED)?\s+LEVEL|"
+    r"STRENGTH|STAMINA|AGILITY|DEXTERITY|WISDOM|INTELLIGENCE|CHARISMA|"
+    r"MAGIC|FIRE|COLD|DISEASE|POISON|CORRUPT(?:ION)?|"
+    r"AC|HP|MANA|END(?:UR(?:ANCE)?)?|STR|STA|AGI|DEX|WIS|INT|CHA)"
     r"(?:[ \t]*:[ \t]*|[ \t]+)"
     r"([+-]?\d[\d,]*(?:[ \t]*\+[ \t]*\d[\d,]*)?)",
     re.IGNORECASE,
 )
+WEIGHT_PATTERN = re.compile(r"\bWeight[ \t]*:[ \t]*(\d+(?:\.\d+)?)\b", re.IGNORECASE)
 TYPE_PATTERN = re.compile(
     r"\b(?:Augmentation\s+types?|This\s+Augmentation\s+fits\s+in\s+slot\s+types?)"
     r"\s*:[ \t]*([0-9]+(?:[ \t]*\([^()]{0,100}\))?"
@@ -45,12 +50,19 @@ SLOT_NAMES = {"ear", "head", "face", "neck", "shoulders", "arms", "back", "wrist
               "hands", "primary", "secondary", "finger", "fingers", "chest", "legs", "feet",
               "waist", "charm", "ammo", "power", "source"}
 STAT_NAMES = {
-    "endur": "endurance", "mana regeneration": "mana_regen", "mana regen": "mana_regen",
+    "end": "endurance", "endur": "endurance", "mana regeneration": "mana_regen", "mana regen": "mana_regen",
     "hp regeneration": "hp_regen", "hp regen": "hp_regen",
+    "end regeneration": "endurance_regen", "end regen": "endurance_regen",
+    "endur regeneration": "endurance_regen", "endur regen": "endurance_regen",
     "endurance regeneration": "endurance_regen", "endurance regen": "endurance_regen",
     "heal amount": "heal_amount", "spell dmg": "spell_damage", "spell damage": "spell_damage",
     "req level": "required_level", "required level": "required_level",
+    "rec level": "recommended_level", "recommended level": "recommended_level",
+    "strength": "str", "stamina": "sta", "agility": "agi", "dexterity": "dex",
+    "wisdom": "wis", "intelligence": "int", "charisma": "cha", "corrupt": "corruption",
 }
+HEROIC_STATS = {"str", "sta", "agi", "dex", "wis", "int", "cha",
+                "magic", "fire", "cold", "disease", "poison", "corruption"}
 
 
 def extract_candidates(text):
@@ -58,11 +70,20 @@ def extract_candidates(text):
     for match in STAT_PATTERN.finditer(text):
         label = " ".join(match.group(1).lower().split())
         key = STAT_NAMES.get(label, label)
-        value = match.group(2).replace(",", "").replace(" ", "")
-        if re.fullmatch(r"[+-]?\d+", value):
+        value = re.sub(r"[,\s]", "", match.group(2))
+        parts = re.fullmatch(r"([+-]?\d+)\+(\d+)", value)
+        if key in HEROIC_STATS and parts:
+            stats[key] = int(parts.group(1))
+            stats[f"heroic_{key}"] = int(parts.group(2))
+        elif re.fullmatch(r"[+-]?\d+", value):
             stats[key] = int(value)
+            if key in HEROIC_STATS:
+                stats.pop(f"heroic_{key}", None)
         else:
             stats[key] = value
+    weight = WEIGHT_PATTERN.search(text)
+    if weight:
+        stats["weight"] = weight.group(1)
     skill = SKILL_PATTERN.search(text)
     if skill:
         stats["skill_mod"] = skill.group(1).strip()

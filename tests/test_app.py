@@ -392,14 +392,21 @@ class AppTests(unittest.TestCase):
         image = io.BytesIO()
         Image.new("RGB", (20, 10), "red").save(image, format="PNG")
         png = image.getvalue()
-        text = ("Green Pulse\nSlot 1, type 3 (General: Spell Effect)\n"
+        text = ("Green Pulse\nStrength: 64 +89 Stamina: 88 +163 Intelligence: 81 +186\n"
+                "Magic: 108 Fire: 93 Cold: 119 Disease: 119 Poison: 101 Corrupt: 2\n"
+                "Attack: 151 HP Regen: 30 Mana Regen: 33 End Regen: 1 Spell Dmg: 246\n"
+                "Slot 1, type 3 (General: Spell Effect)\n"
                 "Slot2, type 5 (General: Multiple Slot)\n#3 Slot, type 8 (General: Raid)")
         with patch("app.recognize_screenshot", return_value=(text, "png")):
             recognized = self.client.post("/uploads/1/screenshots/recognize", data={
                 "csrf_token": self.token, "screenshot": (io.BytesIO(png), "crop.png")
             })
         self.assertEqual(recognized.json["stats"], {
-            "socket_1_type": 3, "socket_2_type": 5, "socket_3_type": 8
+            "str": 64, "heroic_str": 89, "sta": 88, "heroic_sta": 163,
+            "int": 81, "heroic_int": 186, "magic": 108, "fire": 93, "cold": 119,
+            "disease": 119, "poison": 101, "corruption": 2, "attack": 151,
+            "hp_regen": 30, "mana_regen": 33, "endurance_regen": 1, "spell_damage": 246,
+            "socket_1_type": 3, "socket_2_type": 5, "socket_3_type": 8,
         })
         self.assertEqual(recognized.json["types"], [])
         saved = self.client.post("/uploads/1/screenshots/save", data={
@@ -410,9 +417,14 @@ class AppTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200)
         stored = json.loads(self.state["items"][175729]["stats_json"])
         self.assertEqual([stored[f"socket_{n}_type"] for n in (1, 2, 3)], [3, 5, 8])
+        self.assertEqual((stored["str"], stored["heroic_str"], stored["magic"], stored["hp_regen"]),
+                         (64, 89, 108, 30))
         self.assertEqual(json.loads(self.state["items"][175729]["aug_types_json"]), [])
         page = self.client.get(saved.json["item_url"]).get_data(as_text=True)
         self.assertIn("SOCKET 1 TYPE", page)
+        self.assertIn("HEROIC STR", page)
+        self.assertIn(">89<", page)
+        self.assertIn("MAGIC", page)
         self.assertIn("Item socket type: 3", page)
         self.assertIn("Exact type match", page)
         self.assertIn("Item socket type: 5", page)

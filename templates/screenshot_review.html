@@ -11,7 +11,7 @@
   <form class="panel detail-panel ocr-form" action="{{ url_for('screenshot_save', upload_id=upload_id, row_index=row_index) }}" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Compatible augment slot types <span>The slot types this augment fits into, separated by |, e.g. 7|8. Leave blank if unknown; these are not the item's own sockets.</span><input type="text" name="types" value="{{ types_text }}"></label>
-    <label>Stats (JSON) <span>Edit or add fields. Item sockets use numeric fields such as "socket_1_type": 3. Use integer values for ac, hp, mana, and endurance; other fields may be strings. The distiller_class field is the Roman numeral shown on the item, such as "XXI".</span><textarea name="stats_json" rows="10" required>{{ stats_json }}</textarea></label>
+    <label>Stats (JSON) <span>Edit or add fields. Base and heroic attributes are separate, e.g. "str": 64 and "heroic_str": 89. Item sockets use numeric fields such as "socket_1_type": 3. Use integer values for ac, hp, mana, and endurance; other fields may be strings. The distiller_class field is the Roman numeral shown on the item, such as "XXI".</span><textarea name="stats_json" rows="10" required>{{ stats_json }}</textarea></label>
     <label>Recognized text <span>Correct any OCR errors. This text is saved for reference but isn't automatically used as stats.</span><textarea name="raw_text" rows="12" required>{{ raw_text }}</textarea></label>
     <label class="confirmation"><input type="checkbox" name="confirmed" value="yes" required> I verified the screenshot belongs to this item and reviewed these values.</label>
     <button type="submit">Save reviewed item data →</button>

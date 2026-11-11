@@ -97,8 +97,58 @@ This Augmentation fits in slot types: 3 (General: Spell Effect)
             "Augmentation type: 7 8\nAC: 113\nSTR: +22+16 HP: +1,600 MANA: +1600 ENDUR: +1600"
         )
         self.assertEqual(types, [7, 8])
-        self.assertEqual(stats, {"ac": 113, "str": "+22+16", "hp": 1600, "mana": 1600, "endurance": 1600})
+        self.assertEqual(stats, {"ac": 113, "str": 22, "heroic_str": 16, "hp": 1600, "mana": 1600, "endurance": 1600})
         self.assertEqual(extract_candidates("Slot 1, Type 8\nAC: unclear"), ({"socket_1_type": 8}, []))
+
+    def test_green_pulse_full_visible_stat_transcription(self):
+        text = """Green Pulse
+Size: SMALL AC: 758
+Weight: 1.1 HP: 21785
+Tribute: 66483 Mana: 21726
+Rec Level: 130 End: 21726
+Req Level: 130
+Strength: 64 +89 Magic: 108 Attack: 151
+Stamina: 88 +163 Fire: 93 HP Regen: 30
+Intelligence: 81 +186 Cold: 119 Mana Regen: 33
+Wisdom: 95 +111 Disease: 119 End Regen: 1
+Agility: 112 +98 Poison: 101 Heal Amount 246
+Dexterity: 88 +131 Corrupt: 2 Spell Dmg: 246
+Charisma: 88 +173 Clairvoyance: 310
+Slot 1, type 3 (General: Spell Effect)
+Slot 2, type 5 (General: Multiple Slot)
+Slot 3, type 8 (General: Raid)
+Skill Mod: Dodge 10 % (45 Max)
+"""
+        stats, types = extract_candidates(text)
+        self.assertEqual(types, [])
+        self.assertEqual(stats, {
+            "size": "SMALL", "ac": 758, "weight": "1.1", "hp": 21785,
+            "tribute": 66483, "mana": 21726, "endurance": 21726,
+            "recommended_level": 130, "required_level": 130,
+            "str": 64, "heroic_str": 89, "sta": 88, "heroic_sta": 163,
+            "int": 81, "heroic_int": 186, "wis": 95, "heroic_wis": 111,
+            "agi": 112, "heroic_agi": 98, "dex": 88, "heroic_dex": 131,
+            "cha": 88, "heroic_cha": 173,
+            "magic": 108, "fire": 93, "cold": 119, "disease": 119,
+            "poison": 101, "corruption": 2, "attack": 151, "hp_regen": 30,
+            "mana_regen": 33, "endurance_regen": 1, "heal_amount": 246,
+            "spell_damage": 246, "clairvoyance": 310,
+            "socket_1_type": 3, "socket_2_type": 5, "socket_3_type": 8,
+            "skill_mod": "Dodge 10 % (45 Max)",
+        })
+
+    def test_base_heroic_values_and_unknown_components(self):
+        stats, _ = extract_candidates(
+            "STR: +22+16 STA: -5 +3 AGI: 0+0 DEX: 12 WIS: +7 "
+            "INT: 1,200 + 34 CHA: 9 + Magic: 3+2\n"
+            "Endurance Regen: 4 Endurance: 100"
+        )
+        self.assertEqual(stats, {
+            "str": 22, "heroic_str": 16, "sta": -5, "heroic_sta": 3,
+            "agi": 0, "heroic_agi": 0, "dex": 12, "wis": 7,
+            "int": 1200, "heroic_int": 34, "cha": 9,
+            "magic": 3, "heroic_magic": 2, "endurance_regen": 4, "endurance": 100,
+        })
 
     def test_distiller_class_extraction_requires_complete_classed_distiller(self):
         examples = [
