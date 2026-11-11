@@ -162,9 +162,32 @@ Skill Mod: Dodge 10 % (45 Max)
             with self.subTest(text=text):
                 self.assertEqual(extract_candidates(text), ({"distiller_class": "XXI"}, []))
         for text in ("Perfected Augmentation Distiller", "solvent Class Augmentation Distiller",
-                     "solvent Class ABC Augmentation Distiller", "Class XXI Augmentation Distiller"):
+                     "Class XXI Augmentation Distiller"):
             with self.subTest(text=text):
                 self.assertEqual(extract_candidates(text), ({}, []))
+
+    def test_distiller_classes_require_review_for_invalid_ocr_and_perfected_only(self):
+        for numeral in ("I", "II", "IV", "IX", "X", "XII", "XIX", "XXI", "XXIX", "XXX"):
+            text = f"You must use a solvent Class {numeral} Augmentation Distiller or higher."
+            stats, _ = extract_candidates(text)
+            self.assertEqual(stats["distiller_class"], numeral)
+            validate_review('{"distiller_class":"' + numeral + '"}', "", text)
+        text = "You must use a solvent Class XIL Augmentation Distiller or higher."
+        stats, _ = extract_candidates(text)
+        self.assertEqual(stats["distiller_class"], "XIL")
+        for numeral in ("XIL", "XXXX", "IIII", "ABC", "31"):
+            with self.subTest(numeral=numeral), self.assertRaisesRegex(ValueError, "Roman numeral"):
+                validate_review('{"distiller_class":"' + numeral + '"}', "", text)
+        text = "You must use a Perfected Augmentation Distiller to remove this augment."
+        stats, _ = extract_candidates(text)
+        self.assertEqual(stats["distiller_class"], "Perfected only")
+        validate_review('{"distiller_class":"Perfected only"}', "", text)
+        ambiguous = ("You must use a solvent Class XIL Augmentation Distiller or higher, "
+                     "or use a Perfected Augmentation Distiller.")
+        self.assertEqual(extract_candidates(ambiguous)[0]["distiller_class"], "XIL")
+        self.assertNotIn("distiller_class", extract_candidates(
+            "You must use a solvent Class ??? Augmentation Distiller or higher, "
+            "or use a Perfected Augmentation Distiller.")[0])
 
     def test_review_rejects_bad_values(self):
         for stats, types, raw in [('[]', '7', 'x'), ('{"ac":"42"}', '7', 'x'),

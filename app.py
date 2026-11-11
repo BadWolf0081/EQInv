@@ -15,6 +15,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
+from item_matching import suggest_item_names
 from screenshot_ocr import extract_candidates, load_screenshot, recognize_screenshot, validate_review
 from socket_types import socket_type
 
@@ -242,14 +243,20 @@ def screenshots(upload_id):
 @app.route("/uploads/<int:upload_id>/screenshots/recognize", methods=["POST"])
 def screenshots_recognize(upload_id):
     try:
-        if dashboard(upload_id) is None:
+        data = dashboard(upload_id)
+        if data is None:
             abort(404)
         image = request.files.get("screenshot")
         if not image or not image.filename:
             raise ValueError("Choose an item window to recognize.")
         text, _ = recognize_screenshot(image.read())
         stats, types = extract_candidates(text)
-        return jsonify(raw_text=text, stats=stats, types=types)
+        items = {}
+        for row in data["rows"]:
+            if row["item_id"] and row["item_id"] not in items:
+                items[row["item_id"]] = {"index": row["index"], "id": row["item_id"], "name": row["name"]}
+        return jsonify(raw_text=text, stats=stats, types=types,
+                       name_suggestions=suggest_item_names(text, items.values()))
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     except RuntimeError as exc:

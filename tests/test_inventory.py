@@ -66,6 +66,13 @@ class InventoryTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse_item_data(b"id,aug_types,socket_1_type\n1,," + value + b"\n")
 
+    def test_import_distiller_class(self):
+        rows = parse_item_data(b"id,aug_types,distiller_class\n1,5,XII\n2,5,Perfected only\n")
+        self.assertEqual(json.loads(rows[0][2])["distiller_class"], "XII")
+        self.assertEqual(json.loads(rows[1][2])["distiller_class"], "Perfected only")
+        with self.assertRaisesRegex(ValueError, "distiller_class"):
+            parse_item_data(b"id,aug_types,distiller_class\n1,5,XIL\n")
+
 
 if __name__ == "__main__":
     unittest.main()

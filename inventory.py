@@ -5,6 +5,7 @@ import re
 from pathlib import PurePath
 from urllib.parse import parse_qs, urlsplit
 
+from distiller import valid_distiller_class
 from socket_types import socket_number
 
 EQUIPMENT = {
@@ -129,6 +130,8 @@ def parse_item_data(data):
             raise ValueError(f"Duplicate item ID {item_id} on CSV line {line}.")
         seen.add(item_id)
         raw_types = row.pop("aug_types")
+        if "distiller_class" in row and not valid_distiller_class(row["distiller_class"]):
+            raise ValueError(f"Invalid distiller_class on CSV line {line}; use I to XXX or Perfected only.")
         types = []
         if raw_types:
             for value in raw_types.split("|"):

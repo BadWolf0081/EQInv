@@ -6,6 +6,7 @@ import warnings
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from distiller import valid_distiller_class
 from socket_types import socket_number
 
 
@@ -35,7 +36,11 @@ SKILL_PATTERN = re.compile(
 )
 SIZE_PATTERN = re.compile(r"\bSize[ \t]*:[ \t]*([A-Za-z]+)\b", re.IGNORECASE)
 DISTILLER_PATTERN = re.compile(
-    r"\bsolvent\s+Class\s+([IVXLCDM]+)\s+Augmentation\s+Distiller\b", re.IGNORECASE,
+    r"\bsolvent\s+Class\s+([A-Za-z0-9]+)\s+Augmentation\s+Distiller\b", re.IGNORECASE,
+)
+PERFECTED_ONLY_PATTERN = re.compile(
+    r"\bmust\s*use\s+(?:a\s+)?(?:solvent\s+)?(?:a\s+)?Perfected\s+Augmentation\s+Distiller\b",
+    re.IGNORECASE,
 )
 SOCKET_PATTERN = re.compile(
     r"(?:\bSlot[ \t]*([0-9]+)|(?<!\w)#[ \t]*([0-9]+)[ \t]+Slot)"
@@ -93,6 +98,8 @@ def extract_candidates(text):
     distiller = DISTILLER_PATTERN.search(text)
     if distiller:
         stats["distiller_class"] = distiller.group(1).upper()
+    elif PERFECTED_ONLY_PATTERN.search(text):
+        stats["distiller_class"] = "Perfected only"
     sockets = {}
     for match in SOCKET_PATTERN.finditer(text):
         number = int(match.group(1) or match.group(2))
@@ -173,6 +180,9 @@ def validate_review(stats_text, types_text, raw_text):
         if socket_number(key) is not None and value != "" and (
                 not isinstance(value, int) or not 1 <= value <= 255):
             raise ValueError(f"Stat {key} must be an integer from 1 to 255 or blank.")
+        if key == "distiller_class" and not valid_distiller_class(value):
+            raise ValueError("distiller_class must be a Roman numeral from I to XXX, "
+                             '"Perfected only", or blank. Check the screenshot; do not guess an OCR misread.')
     types = []
     if types_text.strip():
         for value in re.split(r"[\s,|/]+", types_text.strip()):

@@ -15,6 +15,9 @@
   const preview = document.getElementById("crop-preview");
   const itemSelect = document.getElementById("item-select");
   const matchHelp = document.getElementById("match-help");
+  const suggestions = document.getElementById("name-suggestions");
+  const suggestionButtons = document.getElementById("suggestion-buttons");
+  const distillerWarning = document.getElementById("distiller-warning");
   const types = document.getElementById("types");
   const stats = document.getElementById("stats");
   const raw = document.getElementById("raw-text");
@@ -180,9 +183,30 @@
       const text = result.raw_text.toLocaleLowerCase().replace(/\s+/g, " ");
       const matches = items.filter(item => containsItemName(text, item.name.toLocaleLowerCase().replace(/\s+/g, " ")));
       itemSelect.value = matches.length === 1 ? String(matches[0].index) : "";
+      suggestionButtons.replaceChildren();
+      const options = matches.length === 1 ? [] : result.name_suggestions;
+      suggestions.hidden = options.length === 0;
+      for (const item of options) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "secondary";
+        button.textContent = `${item.name} (#${item.id})`;
+        button.addEventListener("click", () => {
+          itemSelect.value = String(item.index);
+          matchHelp.textContent = "Possible match selected. Verify it against the screenshot.";
+        });
+        suggestionButtons.appendChild(button);
+      }
       matchHelp.textContent = matches.length === 1
         ? `Suggested from OCR: ${matches[0].name} (#${matches[0].id}). Verify before saving.`
-        : "No unique exact-name match. Select the correct item; OCR can misread names.";
+        : "No unique exact-name match. Select the correct item; possible matches are not verified.";
+      const roman = /^(?:X{0,2}(?:IX|IV|V?I{0,3})|XXX)$/;
+      const distiller = result.stats.distiller_class;
+      const invalid = distiller && distiller !== "Perfected only" && !roman.test(distiller);
+      distillerWarning.hidden = !invalid;
+      distillerWarning.textContent = invalid
+        ? `OCR read distiller class "${distiller}", which is not a valid class from I to XXX. Check the image and correct or remove distiller_class before saving.`
+        : "";
       review.hidden = false;
       message("Compare the crop and every suggested value before saving.");
     } catch (error) {
