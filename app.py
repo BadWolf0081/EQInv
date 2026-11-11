@@ -124,6 +124,7 @@ def dashboard(upload_id=None):
             rows = json.loads(upload.pop("rows_json"))
             ids = sorted({row["item_id"] for row in rows if row["item_id"]})
             catalog = {}
+            icons = set()
             if ids:
                 placeholders = ",".join(["%s"] * len(ids))
                 cursor.execute(f"SELECT item_id, aug_types_json, stats_json FROM item_data WHERE item_id IN ({placeholders})", ids)
@@ -132,11 +133,14 @@ def dashboard(upload_id=None):
                         "types": json.loads(item["aug_types_json"]),
                         "stats": json.loads(item["stats_json"]),
                     }
+                cursor.execute(f"SELECT item_id FROM item_icons WHERE item_id IN ({placeholders})", ids)
+                icons = {item["item_id"] for item in cursor.fetchall()}
     equipment = []
     counts = {}
     for index, row in enumerate(rows):
         row["index"] = index
         row["catalog"] = catalog.get(row["item_id"])
+        row["has_icon"] = row["item_id"] in icons
         if row["section"] != "inventory":
             continue
         if row["parent"] is None and row["location"] in EQUIPMENT:
@@ -206,12 +210,17 @@ def item_detail(upload_id, row_index):
 
 
 @app.route("/items/<int:item_id>/screenshot")
-def item_screenshot(item_id):
+@app.route("/items/<int:item_id>/screenshot/<int:screenshot_id>")
+def item_screenshot(item_id, screenshot_id=None):
     try:
         with connect() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT image_data FROM item_screenshots WHERE item_id = %s ORDER BY id DESC LIMIT 1",
-                               (item_id,))
+                if screenshot_id is None:
+                    cursor.execute("SELECT image_data FROM item_screenshots WHERE item_id = %s ORDER BY id DESC LIMIT 1",
+                                   (item_id,))
+                else:
+                    cursor.execute("SELECT image_data FROM item_screenshots WHERE item_id = %s AND id = %s",
+                                   (item_id, screenshot_id))
                 image = cursor.fetchone()
         if not image:
             abort(404)
@@ -222,6 +231,86 @@ def item_screenshot(item_id):
     except (pymysql.MySQLError, OSError):
         app.logger.exception("Unable to load item screenshot")
         return "Unable to load item screenshot. Check the server logs.", 503
+
+
+@app.route("/items/<int:item_id>/icon")
+def item_icon(item_id):
+    try:
+        with connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT image_data FROM item_icons WHERE item_id = %s", (item_id,))
+                image = cursor.fetchone()
+        if not image:
+            abort(404)
+        response = Response(image["image_data"], mimetype="image/png")
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Unable to load item icon")
+        return "Unable to load item icon. Check the server logs.", 503
+
+
+def crop_icon(image, values):
+    coordinates = [values.get(name, "") for name in ("icon_x", "icon_y", "icon_width", "icon_height")]
+    if not any(coordinates):
+        return None
+    if any(not value.isascii() or not value.isdigit() or len(value) > 8 for value in coordinates):
+        raise ValueError("Select a valid icon rectangle within the item screenshot.")
+    x, y, width, height = map(int, coordinates)
+    if (width < 1 or height < 1 or width > 512 or height > 512
+            or x + width > image.width or y + height > image.height):
+        raise ValueError("Icon rectangle must fit the screenshot and be no larger than 512 by 512 pixels.")
+    output = io.BytesIO()
+    image.crop((x, y, x + width, y + height)).save(output, format="PNG")
+    return output.getvalue()
+
+
+def store_icon(cursor, item_id, icon):
+    cursor.execute(
+        "INSERT INTO item_icons (item_id, image_data) VALUES (%s, %s) "
+        "ON DUPLICATE KEY UPDATE image_data=VALUES(image_data)",
+        (item_id, icon),
+    )
+
+
+@app.route("/uploads/<int:upload_id>/items/<int:row_index>/icon", methods=["GET", "POST"])
+def select_icon(upload_id, row_index):
+    try:
+        row = screenshot_item(upload_id, row_index)
+        with connect() as connection:
+            with connection.cursor() as cursor:
+                screenshot_id = request.form.get("screenshot_id", "")
+                if request.method == "POST":
+                    if not screenshot_id.isascii() or not screenshot_id.isdigit() or len(screenshot_id) > 20:
+                        raise ValueError("Invalid screenshot reference. Reload and select the icon again.")
+                    cursor.execute("SELECT id, image_data FROM item_screenshots WHERE item_id = %s AND id = %s",
+                                   (row["item_id"], int(screenshot_id)))
+                else:
+                    cursor.execute("SELECT id, image_data FROM item_screenshots WHERE item_id = %s ORDER BY id DESC LIMIT 1",
+                                   (row["item_id"],))
+                screenshot = cursor.fetchone()
+                if not screenshot:
+                    abort(404)
+                if request.method == "POST":
+                    if request.form.get("confirmed") != "yes":
+                        raise ValueError("Confirm that the selected icon belongs to this item.")
+                    image, _ = load_screenshot(screenshot["image_data"])
+                    icon = crop_icon(image, request.form)
+                    if icon is None:
+                        raise ValueError("Select an icon to save.")
+                    store_icon(cursor, row["item_id"], icon)
+                    connection.commit()
+                    flash("Item icon saved.", "success")
+                    return redirect(url_for("item_detail", upload_id=upload_id, row_index=row_index))
+        return render_template("select_icon.html", row=row, upload_id=upload_id, row_index=row_index,
+                               screenshot_id=screenshot["id"], error=None)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("select_icon", upload_id=upload_id, row_index=row_index))
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Unable to select item icon")
+        return "Unable to save or load item icon. Check the server logs.", 503
 
 
 @app.route("/uploads/<int:upload_id>/screenshots")
@@ -280,6 +369,7 @@ def screenshots_save(upload_id):
         if not image_file or not image_file.filename:
             raise ValueError("Choose an item window to save.")
         image, _ = load_screenshot(image_file.read())
+        icon = crop_icon(image, request.form)
         output = io.BytesIO()
         image.save(output, format="PNG")
         save_stats = request.form.get("save_stats") == "yes"
@@ -296,6 +386,8 @@ def screenshots_save(upload_id):
                     )
                 cursor.execute("INSERT INTO item_screenshots (item_id, image_data) VALUES (%s, %s)",
                                (row["item_id"], output.getvalue()))
+                if icon is not None:
+                    store_icon(cursor, row["item_id"], icon)
             connection.commit()
         return jsonify(message="Item screenshot saved.", item_url=url_for(
             "item_detail", upload_id=upload_id, row_index=row["index"]))

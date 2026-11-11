@@ -1,0 +1,12 @@
+<div class="icon-selector">
+  <p class="detail-context">Optional: drag around the item icon in the upper-left of the item window. Select only the icon; check the preview before saving. Use pixel coordinates for precise adjustment.</p>
+  <div class="crop-image icon-source"><img{% if icon_source %} src="{{ icon_source }}"{% endif %} alt="Item window; drag around the icon"><span class="icon-selection" hidden></span></div>
+  <div class="crop-coordinates">
+    <label>Icon left <input class="icon-x" name="icon_x" type="number" min="0"></label>
+    <label>Icon top <input class="icon-y" name="icon_y" type="number" min="0"></label>
+    <label>Icon width <input class="icon-width" name="icon_width" type="number" min="1" max="512"></label>
+    <label>Icon height <input class="icon-height" name="icon_height" type="number" min="1" max="512"></label>
+  </div>
+  <p class="detail-context">Icon preview: <canvas class="icon-preview" width="64" height="64" aria-label="Selected icon preview"></canvas></p>
+  <button class="clear-icon secondary" type="button">Clear icon selection</button>
+</div>

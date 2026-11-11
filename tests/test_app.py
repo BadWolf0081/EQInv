@@ -44,11 +44,23 @@ class Cursor:
         elif query.startswith("SELECT id FROM item_screenshots"):
             images = self.state["screenshots"].get(values[0], [])
             self.result = {"id": len(images)} if images else None
+        elif query.startswith("SELECT id, image_data FROM item_screenshots"):
+            images = self.state["screenshots"].get(values[0], [])
+            index = values[1] if len(values) > 1 else len(images)
+            self.result = {"id": index, "image_data": images[index - 1]} if 1 <= index <= len(images) else None
         elif query.startswith("SELECT image_data FROM item_screenshots"):
             images = self.state["screenshots"].get(values[0], [])
-            self.result = {"image_data": images[-1]} if images else None
+            index = values[1] if len(values) > 1 else len(images)
+            self.result = {"image_data": images[index - 1]} if 1 <= index <= len(images) else None
+        elif query.startswith("SELECT item_id FROM item_icons"):
+            self.result = [{"item_id": item_id} for item_id in values if item_id in self.state["icons"]]
+        elif query.startswith("SELECT image_data FROM item_icons"):
+            image = self.state["icons"].get(values[0])
+            self.result = {"image_data": image} if image else None
         elif query.startswith("SELECT item_id"):
             self.result = list(self.state["items"].values())
+        elif query.startswith("INSERT INTO item_icons"):
+            self.state["icons"][values[0]] = values[1]
         elif query.startswith("INSERT INTO item_screenshots"):
             item_id, image_data = values
             self.state["screenshots"].setdefault(item_id, []).append(image_data)
@@ -99,7 +111,7 @@ class Connection:
 
 class AppTests(unittest.TestCase):
     def setUp(self):
-        self.state = {"uploads": [], "items": {}, "catalog": {}, "lucy": {}, "screenshots": {}, "commits": 0}
+        self.state = {"uploads": [], "items": {}, "catalog": {}, "lucy": {}, "screenshots": {}, "icons": {}, "commits": 0}
         self.patcher = patch("app.connect", side_effect=lambda: Connection(self.state))
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
@@ -486,6 +498,81 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(self.state["screenshots"][11]), 2)
         latest = self.client.get("/items/11/screenshot")
         self.assertEqual(Image.open(io.BytesIO(latest.data)).size, (4, 3))
+
+    def test_icon_crop_is_saved_and_shown_with_item_everywhere(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        image = Image.new("RGB", (20, 20), "red")
+        for x in range(3, 8):
+            for y in range(4, 10):
+                image.putpixel((x, y), (0, 0, 255))
+        data = io.BytesIO()
+        image.save(data, format="PNG")
+        png = data.getvalue()
+        response = self.client.post("/uploads/1/screenshots/save", data={
+            "csrf_token": self.token, "row_index": "1", "confirmed": "yes", "save_stats": "yes",
+            "stats_json": '{"ac":42}', "types": "7", "raw_text": "AC: 42",
+            "icon_x": "3", "icon_y": "4", "icon_width": "5", "icon_height": "6",
+            "screenshot": (io.BytesIO(png), "item.png"),
+        })
+        self.assertEqual(response.status_code, 200)
+        icon = self.client.get("/items/11/icon")
+        self.assertEqual(icon.status_code, 200)
+        self.assertEqual(icon.mimetype, "image/png")
+        self.assertEqual(icon.headers["Cache-Control"], "no-store")
+        decoded = Image.open(io.BytesIO(icon.data))
+        self.assertEqual(decoded.size, (5, 6))
+        self.assertEqual(decoded.getpixel((0, 0)), (0, 0, 255))
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertEqual(page.count('src="/items/11/icon"'), 3)
+        self.assertIn('src="/items/11/icon"', self.client.get("/uploads/1/items/0").get_data(as_text=True))
+        self.assertEqual(self.client.get("/items/12/icon").status_code, 404)
+
+    def test_icon_validation_and_existing_saved_screenshot(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        self.state["items"][11] = {"item_id": 11, "stats_json": '{"ac":42}', "aug_types_json": "[7]"}
+        pngs = []
+        for color in ("red", "blue"):
+            out = io.BytesIO()
+            Image.new("RGB", (20, 20), color).save(out, format="PNG")
+            pngs.append(out.getvalue())
+        self.state["screenshots"][11] = pngs
+        url = "/uploads/1/items/1/icon"
+        self.assertIn(b'/items/11/screenshot/2', self.client.get(url).data)
+        fields = {"csrf_token": self.token, "screenshot_id": "1", "confirmed": "yes",
+                  "icon_x": "0", "icon_y": "0", "icon_width": "5", "icon_height": "5"}
+        response = self.client.post(url, data=fields, follow_redirects=True)
+        self.assertIn(b"Item icon saved", response.data)
+        icon = Image.open(io.BytesIO(self.client.get("/items/11/icon").data))
+        self.assertEqual(icon.getpixel((0, 0)), (255, 0, 0))
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"]), {"ac": 42})
+        for overrides in ({"confirmed": ""}, {"icon_x": "-1"}, {"icon_width": "21"},
+                          {"icon_width": ""}, {"icon_height": "513"}):
+            invalid = dict(fields, **overrides)
+            result = self.client.post(url, data=invalid, follow_redirects=True)
+            self.assertIn(b'notice error', result.data)
+            self.assertEqual(self.client.get("/items/11/icon").data, self.state["icons"][11])
+        self.assertEqual(self.client.get("/uploads/1/items/3/icon").status_code, 404)
+
+    def test_invalid_icon_is_rejected_before_screenshot_or_stats_save(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        image = io.BytesIO()
+        Image.new("RGB", (10, 10)).save(image, format="PNG")
+        response = self.client.post("/uploads/1/screenshots/save", data={
+            "csrf_token": self.token, "row_index": "1", "confirmed": "yes", "save_stats": "yes",
+            "stats_json": '{"ac":42}', "types": "", "raw_text": "AC: 42",
+            "icon_x": "9", "icon_y": "0", "icon_width": "3", "icon_height": "3",
+            "screenshot": (io.BytesIO(image.getvalue()), "item.png"),
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Icon rectangle", response.json["error"])
+        self.assertEqual(self.state["screenshots"], {})
+        self.assertNotIn(11, self.state["items"])
 
     def test_screenshot_api_returns_json_for_oversized_upload(self):
         previous = app.config["MAX_CONTENT_LENGTH"]

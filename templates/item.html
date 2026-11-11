@@ -1,3 +1,4 @@
+{% from '_item_icon.html' import item_icon %}
 {% macro item_stats(item) %}
   <dl class="details-list">
     <div><dt>Compatible augment slot types</dt><dd>{% if item.catalog and item.catalog.types %}{{ item.catalog.types|join(' / ') }}{% else %}Unknown{% endif %}</dd></div>
@@ -31,7 +32,7 @@
         {% for category, message in messages %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
       {% endwith %}
       <p class="eyebrow">ITEM DETAILS · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}{% if data.upload.server_name %} · {{ data.upload.server_name }}{% endif %}</p>
-      <h1>{{ row.name }}</h1>
+      <h1>{{ item_icon(row, 'gear') }}{{ row.name }}</h1>
       <p class="detail-context">Item #{{ row.item_id }} · {{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }} · Count {{ row.count }}{% if row.slots is not none %} · Export slots {{ row.slots }}{% endif %}</p>
       {% if lucy %}<p class="detail-context"><a class="item-link" href="https://lucy.allakhazam.com/item.html?id={{ row.item_id }}" target="_blank" rel="noopener noreferrer">View {{ lucy.name }} on Lucy ↗</a> (opens an external site)</p>{% endif %}
       <p class="detail-context"><a class="item-link" href="{{ allakhazam_search }}" target="_blank" rel="noopener noreferrer">Search Allakhazam for {{ row.name }} ↗</a> (opens an external site; check the item ID in the results)</p>
@@ -41,6 +42,7 @@
         <h2 id="stats-title">Item stats</h2>
         {{ item_stats(row) }}
         {% if screenshot %}<details><summary>Saved item screenshot (latest)</summary><img class="ocr-preview" src="{{ url_for('item_screenshot', item_id=row.item_id) }}" alt="Saved screenshot of {{ row.name }}"></details>{% endif %}
+        {% if screenshot %}<p><a class="item-link" href="{{ url_for('select_icon', upload_id=data.upload.id, row_index=row.index) }}">Select or replace icon from saved screenshot</a></p>{% endif %}
         {% if row.catalog and row.catalog.stats.get('ocr_text') %}<details><summary>Reviewed screenshot text</summary><pre class="ocr-text">{{ row.catalog.stats.ocr_text }}</pre></details>{% endif %}
         <p class="panel-foot">Stats and augment types come from imported data or reviewed screenshots, not the inventory export. Unknown does not mean zero.</p>
       </section>
@@ -56,7 +58,7 @@
           {% for child in children %}
           <article class="gear-card{% if not child.item_id %} empty-gear{% endif %}">
             <p class="slot-name">{{ child.location }}</p>
-            <h3>{% if child.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=child.index) }}">{{ child.name }}</a>{% else %}{{ child.name }}{% endif %}</h3>
+            <h3>{{ item_icon(child) }}{% if child.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=child.index) }}">{{ child.name }}</a>{% else %}{{ child.name }}{% endif %}</h3>
             {% if child.socket_type is not none %}
               <p class="detail-context">Item socket type: {{ child.socket_type }}
               {% if child.socket_match is sameas true %} · Exact type match

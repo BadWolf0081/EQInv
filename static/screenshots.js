@@ -12,7 +12,8 @@
   const recognize = document.getElementById("recognize");
   const status = document.getElementById("status");
   const review = document.getElementById("review");
-  const preview = document.getElementById("crop-preview");
+  const iconSelector = document.querySelector(".icon-selector");
+  const preview = iconSelector.querySelector(".icon-source img");
   const itemSelect = document.getElementById("item-select");
   const matchHelp = document.getElementById("match-help");
   const suggestions = document.getElementById("name-suggestions");
@@ -39,6 +40,7 @@
     review.hidden = true;
     crop = null;
     confirmed.checked = false;
+    iconSelector.dispatchEvent(new Event("clear-icon"));
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null;
     preview.removeAttribute("src");
@@ -235,6 +237,9 @@
       form.append("stats_json", stats.value);
       form.append("types", types.value);
       form.append("raw_text", raw.value);
+      for (const input of iconSelector.querySelectorAll("input")) {
+        form.append(input.name, input.value);
+      }
       const result = await post(root.dataset.saveUrl, form);
       clearReview();
       message(`${result.message} Select the next window, or open the item from the inventory.`);

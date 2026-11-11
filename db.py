@@ -77,6 +77,13 @@ def initialize(connection):
                 INDEX (item_id, id)
             ) ENGINE=InnoDB CHARACTER SET utf8mb4
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS item_icons (
+                item_id INT UNSIGNED NOT NULL PRIMARY KEY,
+                image_data MEDIUMBLOB NOT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB CHARACTER SET utf8mb4
+        """)
 
         # Backfill previously saved uploads in order, preserving the first name seen.
         last_id = 0

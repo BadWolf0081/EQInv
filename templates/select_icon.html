@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Select icon · Adventurer's Ledger</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"><script src="{{ url_for('static', filename='icon_crop.js') }}" defer></script></head>
+<body><div class="page"><main class="item-detail">
+  <a class="item-link back-link" href="{{ url_for('item_detail', upload_id=upload_id, row_index=row_index) }}">← Back to item</a>
+  <h1>Select icon for {{ row.name }}</h1>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="notice {{ category }}" role="alert">{{ message }}</div>{% endfor %}
+  {% endwith %}
+  <noscript><div class="notice error">JavaScript is required for the icon preview.</div></noscript>
+  <form class="panel detail-panel ocr-form" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="screenshot_id" value="{{ screenshot_id }}">
+    {% set icon_source = url_for('item_screenshot', item_id=row.item_id, screenshot_id=screenshot_id) %}
+    {% include '_icon_selector.html' %}
+    <label class="confirmation"><input type="checkbox" name="confirmed" value="yes" required> I verified that this icon belongs to {{ row.name }}.</label>
+    <button type="submit">Save item icon →</button>
+  </form>
+</main></div></body></html>

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Import screenshots · Adventurer's Ledger</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='icon_crop.js') }}" defer></script>
   <script src="{{ url_for('static', filename='screenshots.js') }}" defer></script>
 </head>
 <body><div class="page"><main class="item-detail">
@@ -30,7 +31,8 @@
     <p id="status" class="notice" role="status" aria-live="polite" hidden></p>
     <form id="review" class="panel detail-panel ocr-form" hidden>
       <h2>Review one item</h2>
-      <img id="crop-preview" class="ocr-preview" alt="Selected item window crop">
+      {% set icon_source = '' %}
+      {% include '_icon_selector.html' %}
       <label>Inventory item <span id="match-help">Select the item that matches this crop.</span>
         <select id="item-select" required><option value="">Select an item</option>{% for item in items %}<option value="{{ item.index }}">{{ item.name }} (#{{ item.id }})</option>{% endfor %}</select>
       </label>
@@ -41,7 +43,7 @@
       <label>Recognized text <span>Corrected text is saved with the stats if you select that option.</span><textarea id="raw-text" rows="12"></textarea></label>
       <label class="confirmation"><input id="save-stats" type="checkbox" checked> Save reviewed stats and augment types if this item has no catalog data</label>
       <p class="detail-context">Existing catalog data is never overwritten. Uncheck the stats option to save only an image for an item with existing data.</p>
-      <label class="confirmation"><input id="confirmed" type="checkbox" required> I verified this crop, item, and any values being saved.</label>
+      <label class="confirmation"><input id="confirmed" type="checkbox" required> I verified this crop, item, selected icon, and any values being saved.</label>
       <button type="submit">Save this item →</button>
     </form>
   </div>
