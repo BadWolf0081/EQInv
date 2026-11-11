@@ -1,0 +1,60 @@
+{% macro item_stats(item) %}
+  <dl class="details-list">
+    <div><dt>Augment types</dt><dd>{% if item.catalog and item.catalog.types %}{{ item.catalog.types|join(' / ') }}{% else %}Unknown{% endif %}</dd></div>
+    {% if item.catalog %}
+      {% for key, value in item.catalog.stats.items() %}
+        <div><dt>{{ key|replace('_', ' ')|upper }}</dt><dd>{{ value if value != '' else 'Unknown' }}</dd></div>
+      {% endfor %}
+      {% if not item.catalog.stats %}<div><dt>Item stats</dt><dd>Not provided</dd></div>{% endif %}
+    {% else %}
+      <div><dt>Item stats</dt><dd>Not imported</dd></div>
+    {% endif %}
+  </dl>
+{% endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ row.name }} · Adventurer's Ledger</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✦</span><span>THE ADVENTURER'S <strong>LEDGER</strong></span></a>
+      <span class="masthead-note">A COMPANION FOR NORRATH</span>
+    </header>
+    <main class="item-detail">
+      <a class="item-link back-link" href="{{ url_for('index') }}">← Back to inventory</a>
+      <p class="eyebrow">ITEM DETAILS · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}{% if data.upload.server_name %} · {{ data.upload.server_name }}{% endif %}</p>
+      <h1>{{ row.name }}</h1>
+      <p class="detail-context">Item #{{ row.item_id }} · {{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }} · Count {{ row.count }}{% if row.slots is not none %} · Export slots {{ row.slots }}{% endif %}</p>
+      {% if parent and parent.item_id %}<p class="detail-context">Inside <a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=parent.index) }}">{{ parent.name }}</a></p>{% endif %}
+      <section class="panel detail-panel" aria-labelledby="stats-title">
+        <p class="eyebrow">CATALOG DATA</p>
+        <h2 id="stats-title">Item stats</h2>
+        {{ item_stats(row) }}
+        <p class="panel-foot">Stats and augment types come from manually imported item data, not the inventory export. Unknown does not mean zero.</p>
+      </section>
+      {% if children %}
+      <section class="detail-children" aria-labelledby="children-title">
+        <div class="section-heading"><div><p class="eyebrow">CONTENTS OF THIS SLOT</p><h2 id="children-title">Augments &amp; contents</h2></div><p>Direct children in the inventory export.</p></div>
+        <div class="gear-grid">
+          {% for child in children %}
+          <article class="gear-card{% if not child.item_id %} empty-gear{% endif %}">
+            <p class="slot-name">{{ child.location }}</p>
+            <h3>{% if child.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=child.index) }}">{{ child.name }}</a>{% else %}{{ child.name }}{% endif %}</h3>
+            {% if child.item_id %}<span class="item-id">ITEM #{{ child.item_id }}</span>{{ item_stats(child) }}{% endif %}
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% else %}
+      <p class="detail-context">No child slots are listed for this item in the export.</p>
+      {% endif %}
+    </main>
+    <footer><span>✦ &nbsp; THE ADVENTURER'S LEDGER</span><span>Unofficial fan-made companion · Your files stay on this server</span></footer>
+  </div>
+</body>
+</html>

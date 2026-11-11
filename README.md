@@ -66,6 +66,8 @@ The development server binds to **all IPv4 interfaces** (`0.0.0.0`) and has **no
 
 In EverQuest, use `/outputfile inventory`. Select the resulting `Character_Server-Inventory.txt` on the website. The name and server are inferred from the filename if it follows that pattern; otherwise they are shown as unknown. Re-export and upload again to refresh the snapshot. The keyring's additional fields are retained in the original and parsed data.
 
+Click an item or augment name in the gear, comparison, or inventory lists to see its imported stats and augment types. The detail page also shows the direct child slots from that specific exported item, including their imported stats; container contents are listed the same way. Follow a child link to see its own details. Empty slots are not items. Missing catalog values are marked unknown or not imported, and the export's `Slots` value is not an augment type.
+
 Every successful upload also adds each previously unseen nonzero item ID and its first observed name to the `items` table, including equipped gear, augments, bags, bank, and keyring items. Duplicate IDs and empty slots are not added. The inventory and item catalog are saved in the same transaction. Existing names are not overwritten on later uploads. The manually imported `item_data` table remains separate and can be joined using `item_id`; uploads never overwrite its stats or augment types.
 
 If upgrading an existing installation, activate the virtual environment and set the database environment variables above, then run `python -m flask --app app init-db` again before starting the app. It creates the `items` table and backfills it from all previously saved uploads, in upload order. Running it again is safe and does not replace existing entries.

@@ -70,11 +70,14 @@ def save_items(upload):
     return len(items)
 
 
-def dashboard():
+def dashboard(upload_id=None):
     with connect() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, filename, character_name, server_name, uploaded_at, rows_json "
-                           "FROM uploads ORDER BY id DESC LIMIT 1")
+            query = "SELECT id, filename, character_name, server_name, uploaded_at, rows_json FROM uploads "
+            if upload_id is None:
+                cursor.execute(query + "ORDER BY id DESC LIMIT 1")
+            else:
+                cursor.execute(query + "WHERE id = %s", (upload_id,))
             upload = cursor.fetchone()
             if not upload:
                 return None
@@ -92,6 +95,7 @@ def dashboard():
     equipment = []
     counts = {}
     for index, row in enumerate(rows):
+        row["index"] = index
         row["catalog"] = catalog.get(row["item_id"])
         if row["section"] != "inventory":
             continue
@@ -128,6 +132,21 @@ def index():
         app.logger.exception("Unable to load inventory")
         return render_template("index.html", data=None, db_error=True), 503
     return render_template("index.html", data=data, db_error=False)
+
+
+@app.route("/uploads/<int:upload_id>/items/<int:row_index>")
+def item_detail(upload_id, row_index):
+    try:
+        data = dashboard(upload_id)
+    except (pymysql.MySQLError, OSError, ValueError):
+        app.logger.exception("Unable to load item details")
+        return render_template("index.html", data=None, db_error=True), 503
+    if data is None or row_index >= len(data["rows"]) or not data["rows"][row_index]["item_id"]:
+        abort(404)
+    row = data["rows"][row_index]
+    children = [child for child in data["rows"] if child["parent"] == row_index]
+    parent = data["rows"][row["parent"]] if row["parent"] is not None else None
+    return render_template("item.html", data=data, row=row, children=children, parent=parent)
 
 
 @app.route("/upload", methods=["POST"])

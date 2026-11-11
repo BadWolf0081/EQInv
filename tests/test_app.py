@@ -26,7 +26,11 @@ class Cursor:
                                           "server_name": values[2], "raw_text": values[3],
                                           "rows_json": values[4], "uploaded_at": "2026-01-01"})
         elif query.startswith("SELECT id, filename"):
-            self.result = self.state["uploads"][-1].copy() if self.state["uploads"] else None
+            if values is not None:
+                match = next((upload for upload in self.state["uploads"] if upload["id"] == values[0]), None)
+            else:
+                match = self.state["uploads"][-1] if self.state["uploads"] else None
+            self.result = match.copy() if match else None
         elif query.startswith("SELECT item_id"):
             self.result = list(self.state["items"].values())
         else:
@@ -148,6 +152,59 @@ class AppTests(unittest.TestCase):
             3: "Bag", 4: "Nested item", 13: "Nested aug", 42: "A mount",
         })
         self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["ac"], 40)
+
+    def test_item_details_show_stats_types_and_correct_children(self):
+        response = self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        }, follow_redirects=True)
+        self.assertIn(b'/uploads/1/items/0', response.data)
+        self.assertIn(b'/uploads/1/items/1', response.data)
+        self.assertIn(b'/uploads/1/items/7', response.data)
+        csv = b"id,aug_types,ac,hp,heroic_int\n1,,50,500,20\n11,7|8,42,100,12\n12,8,,0,\n"
+        self.client.post("/item-data", data={"csrf_token": self.token, "items": (io.BytesIO(csv), "items.csv")})
+        response = self.client.get("/uploads/1/items/0")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"First earring", response.data)
+        self.assertIn(b"First aug", response.data)
+        self.assertNotIn(b"Second aug", response.data)
+        self.assertIn(b"7 / 8", response.data)
+        self.assertIn(b"HEROIC INT", response.data)
+        self.assertIn(b">42<", response.data)
+        self.assertIn(b'/uploads/1/items/1', response.data)
+        response = self.client.get("/uploads/1/items/3")
+        self.assertIn(b"Second aug", response.data)
+        self.assertIn(b"Second earring", response.data)
+        self.assertIn(b">Unknown<", response.data)
+        self.assertIn(b">0<", response.data)
+        response = self.client.get("/uploads/1/items/4")
+        self.assertIn(b"Nested item", response.data)
+        self.assertNotIn(b"Nested aug", response.data)
+        self.assertIn(b"Not imported", response.data)
+        response = self.client.get("/uploads/1/items/7")
+        self.assertIn(b"Keyring", response.data)
+        self.assertIn(b"A mount", response.data)
+
+    def test_item_links_keep_upload_identity_and_validate_indices(self):
+        for contents in (EXPORT, EXPORT.replace(b"First earring", b"New earring")):
+            self.client.post("/upload", data={
+                "csrf_token": self.token, "inventory": (io.BytesIO(contents), "Example_Test-Inventory.txt")
+            })
+        self.assertIn(b"First earring", self.client.get("/uploads/1/items/0").data)
+        self.assertIn(b"New earring", self.client.get("/uploads/2/items/0").data)
+        self.assertEqual(self.client.get("/uploads/1/items/9999").status_code, 404)
+        self.assertEqual(self.client.get("/uploads/999/items/0").status_code, 404)
+        with patch("app.connect", side_effect=OSError("database unavailable")):
+            self.assertEqual(self.client.get("/uploads/1/items/0").status_code, 503)
+
+    def test_empty_slots_are_not_clickable(self):
+        data = b"Location\tName\tID\tCount\tSlots\nEar\tEarring\t1\t1\t6\nEar-Slot1\tEmpty\t0\t0\t0\n"
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(data), "Example_Test-Inventory.txt")
+        })
+        response = self.client.get("/uploads/1/items/0")
+        self.assertIn(b"Empty", response.data)
+        self.assertNotIn(b'/uploads/1/items/1', response.data)
+        self.assertEqual(self.client.get("/uploads/1/items/1").status_code, 404)
 
 
 if __name__ == "__main__":
