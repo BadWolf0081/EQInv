@@ -83,11 +83,6 @@ def automatic_icon(image):
             break
     if title_y is None:
         return None
-    scale = (tab_y - title_y) / 12
-    if not 0.75 <= scale <= 2.5:
-        return None
-    if scale < 1:
-        scale = 1
     # The first border row can start partway around the rounded tab corner.
     for y in range(tab_y + 1, min(tab_y + 3, height)):
         run = 0
@@ -103,6 +98,29 @@ def automatic_icon(image):
                     break
             else:
                 run = 0
+    scale = (tab_y - title_y) / 12
+    # The short horizontal ledge below the tab is independent of crop margins.
+    for y in range(tab_y + 7, min(tab_y + 31, height)):
+        run = 0
+        start = 0
+        for x in range(max(0, tab_x - 24), min(width, tab_x + 3)):
+            r, g, b = pixels[x, y]
+            if b > r + 12 and b > 135 and g > 100:
+                if not run:
+                    start = x
+                run += 1
+                if run >= 4 and start <= tab_x - 3 and x >= tab_x - 3:
+                    scale = (y - tab_y) / 12
+                    break
+            else:
+                run = 0
+        else:
+            continue
+        break
+    if not 0.75 <= scale <= 2.5:
+        return None
+    if scale <= 1.15:
+        scale = 1
     crop_width, crop_height = round(30 * scale), round(36 * scale)
     x, y = tab_x, round(tab_y + 17 * scale)
     if x + crop_width > width or y + crop_height > height:

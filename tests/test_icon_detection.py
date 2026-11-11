@@ -55,6 +55,26 @@ class IconDetectionTests(unittest.TestCase):
                 self.assertLessEqual(abs(bounds[0] - (icon.width - bounds[2])), 1)
                 self.assertLessEqual(abs(bounds[1] - (icon.height - bounds[3])), 1)
 
+    def test_tab_ledge_avoids_misreading_bright_area_above_window(self):
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                margin = 8 * scale
+                image = item_window(scale, margin)
+                draw = ImageDraw.Draw(image)
+                draw.rectangle((0, 0, image.width - 1, margin - 1), fill=(200, 190, 180))
+                tab_x = margin + 10 * scale
+                tab_y = margin + 12 * scale
+                draw.line((tab_x - 6 * scale, tab_y + 12 * scale,
+                           tab_x, tab_y + 12 * scale), fill=(160, 180, 220))
+                result = automatic_icon(image)
+                self.assertIsNotNone(result)
+                icon = Image.open(io.BytesIO(result))
+                bounds = icon.getchannel("A").getbbox()
+                self.assertEqual((bounds[2] - bounds[0], bounds[3] - bounds[1]),
+                                 (15 * scale, 19 * scale))
+                self.assertEqual(icon.getpixel((icon.width // 2, icon.height // 2)),
+                                 (240, 20, 20, 255))
+
     def test_unrecognized_or_incomplete_images_are_not_cropped(self):
         self.assertIsNone(automatic_icon(Image.new("RGB", (240, 180), (20, 25, 45))))
         self.assertIsNone(automatic_icon(Image.new("RGB", (10, 10))))
