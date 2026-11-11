@@ -14,7 +14,7 @@ MAX_PIXELS = 20_000_000
 STAT_PATTERN = re.compile(
     r"\b(MANA\s+REGEN(?:ERATION)?|HP\s+REGEN(?:ERATION)?|"
     r"END(?:UR(?:ANCE)?)?\s+REGEN(?:ERATION)?|"
-    r"HEAL\s+AMOUNT|SPELL\s+(?:DMG|DAMAGE)|CLAIRVOYANCE|ATTACK|TRIBUTE|PURITY|"
+    r"HEAL\s+AMOUNT|SPELL\s+(?:DMG|DAMAGE)|CLAIRVOYANCE|ATTACK|TRIBUTE|PURITY|PURILY|"
     r"REQ(?:UIRED)?\s+LEVEL|REC(?:OMMENDED)?\s+LEVEL|"
     r"STRENGTH|STAMINA|AGILITY|DEXTERITY|WISDOM|INTELLIGENCE|CHARISMA|"
     r"MAGIC|FIRE|COLD|DISEASE|POISON|CORRUPT(?:ION)?|"
@@ -55,6 +55,7 @@ SLOT_NAMES = {"ear", "head", "face", "neck", "shoulders", "arms", "back", "wrist
               "hands", "primary", "secondary", "finger", "fingers", "chest", "legs", "feet",
               "waist", "charm", "ammo", "power", "source"}
 STAT_NAMES = {
+    "purily": "purity",
     "end": "endurance", "endur": "endurance", "mana regeneration": "mana_regen", "mana regen": "mana_regen",
     "hp regeneration": "hp_regen", "hp regen": "hp_regen",
     "end regeneration": "endurance_regen", "end regen": "endurance_regen",

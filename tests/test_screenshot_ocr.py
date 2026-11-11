@@ -12,6 +12,30 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(stats["purity"], 75)
         self.assertEqual(types, [14])
 
+    def test_user_actual_purity_ocr_output(self):
+        text = (
+            "<—o i AR IGG UC Ola Description [ Lore Extra Planar Potential Shard "
+            "No Trade, Altunable, Augmentation, Infusible, Prestige "
+            "Head Arms Wrist Range Hands Primary Secondary Chest Legs Feet "
+            "Size: TINY  Purily: 35 Tribute: 1200 Req Level: 105 "
+            "© Unmodified Extra Planar Potential Shard e "
+            "This Augmentation fits in slot types: 13 (Energeiac: Group), 14 (Energeiac: Raid) "
+            "Restictions - Armor Only This augment can only safely be removed with the Perfected "
+            "Augmentation Distiller."
+        )
+        stats, types = extract_candidates(text)
+        self.assertEqual(stats["purity"], 35)
+        self.assertEqual(stats["size"], "TINY")
+        self.assertEqual(stats["tribute"], 1200)
+        self.assertEqual(stats["required_level"], 105)
+        self.assertEqual(types, [13, 14])
+        self.assertNotIn("purily", stats)
+
+    def test_purity_ocr_misread_requires_a_number_and_full_label(self):
+        self.assertEqual(extract_candidates("Purily: unclear")[0], {})
+        self.assertEqual(extract_candidates("Impurily: 35")[0], {})
+        self.assertEqual(extract_candidates("PURILY: 0")[0], {"purity": 0})
+
     def test_tourmaline_item_window_transcription(self):
         text = """Tourmaline of Alteration
 Description

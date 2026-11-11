@@ -627,6 +627,33 @@ class AppTests(unittest.TestCase):
             self.assertIn(b"7 / 8", self.client.get(saved.json["item_url"]).data)
         self.assertEqual(self.client.get("/items/999/screenshot").status_code, 404)
 
+    def test_purity_ocr_misread_is_saved_and_shown_in_preview(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        image = io.BytesIO()
+        Image.new("RGB", (20, 10), "red").save(image, format="PNG")
+        png = image.getvalue()
+        text = ("First aug Size: TINY Purily: 35 Tribute: 1200 Req Level: 105 "
+                "This Augmentation fits in slot types: 13 (Energeiac: Group), 14 (Energeiac: Raid)")
+        with patch("app.recognize_screenshot", return_value=(text, "png")):
+            response = self.client.post("/uploads/1/screenshots/recognize", data={
+                "csrf_token": self.token, "screenshot": (io.BytesIO(png), "crop.png")
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["stats"]["purity"], 35)
+        self.assertEqual(response.json["types"], [13, 14])
+        saved = self.client.post("/uploads/1/screenshots/save", data={
+            "csrf_token": self.token, "row_index": "1", "confirmed": "yes", "save_stats": "yes",
+            "stats_json": json.dumps(response.json["stats"]), "types": "13|14", "raw_text": text,
+            "screenshot": (io.BytesIO(png), "crop.png"),
+        })
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(json.loads(self.state["items"][11]["stats_json"])["purity"], 35)
+        preview = self.client.get("/").get_data(as_text=True).split(
+            '<template id="augment-preview-0">')[1].split('</template>')[0]
+        self.assertIn("Purity 35", preview)
+
     def test_equipment_socket_ocr_is_saved_and_compared_with_installed_augments(self):
         inventory = (
             b"Location\tName\tID\tCount\tSlots\n"
