@@ -1,6 +1,9 @@
 import io
 import json
+import gzip
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from app import app
@@ -31,6 +34,8 @@ class Cursor:
             else:
                 match = self.state["uploads"][-1] if self.state["uploads"] else None
             self.result = match.copy() if match else None
+        elif query.startswith("SELECT item_id, name FROM lucy_items"):
+            self.result = self.state["lucy"].get(values[0])
         elif query.startswith("SELECT item_id"):
             self.result = list(self.state["items"].values())
         else:
@@ -43,6 +48,9 @@ class Cursor:
         elif query.startswith("INSERT INTO items"):
             for item_id, name in values:
                 self.state["catalog"].setdefault(item_id, name)
+        elif query.startswith("INSERT INTO lucy_items"):
+            for item_id, name in values:
+                self.state["lucy"][item_id] = {"item_id": item_id, "name": name}
         else:
             raise AssertionError(query)
 
@@ -72,7 +80,7 @@ class Connection:
 
 class AppTests(unittest.TestCase):
     def setUp(self):
-        self.state = {"uploads": [], "items": {}, "catalog": {}, "commits": 0}
+        self.state = {"uploads": [], "items": {}, "catalog": {}, "lucy": {}, "commits": 0}
         self.patcher = patch("app.connect", side_effect=lambda: Connection(self.state))
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
@@ -205,6 +213,44 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"Empty", response.data)
         self.assertNotIn(b'/uploads/1/items/1', response.data)
         self.assertEqual(self.client.get("/uploads/1/items/1").status_code, 404)
+
+    def test_lucy_link_only_for_imported_reference(self):
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")
+        })
+        self.assertNotIn(b'lucy.allakhazam.com', self.client.get("/uploads/1/items/0").data)
+        self.state["lucy"][1] = {"item_id": 1, "name": "First earring"}
+        response = self.client.get("/uploads/1/items/0")
+        self.assertIn(b'https://lucy.allakhazam.com/item.html?id=1', response.data)
+        self.assertIn(b'opens an external site', response.data)
+        self.assertNotIn(b'lucy.allakhazam.com', self.client.get("/uploads/1/items/1").data)
+
+    def test_import_lucy_command_batches_and_preserves_item_stats(self):
+        source = "id,name,lucylink\n" + "".join(
+            f'{i},Item {i},http://lucy.allakhazam.com/item.html?id={i}\n'
+            for i in range(1, 1003)
+        )
+        self.state["items"][1] = {"item_id": 1, "stats_json": '{"ac":42}', "aug_types_json": "[7]"}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "items.txt"
+            path.write_text(source, encoding="utf-8")
+            result = app.test_cli_runner().invoke(args=["import-lucy", str(path)])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Imported 1002 Lucy item references.", result.output)
+        self.assertEqual(len(self.state["lucy"]), 1002)
+        self.assertEqual(json.loads(self.state["items"][1]["stats_json"])["ac"], 42)
+        self.assertEqual(self.state["commits"], 1)
+
+    def test_import_lucy_invalid_does_not_commit(self):
+        source = "id,name,lucylink\n1,A,http://example.com/item.html?id=1\n"
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "items.txt.gz")
+            with gzip.open(path, "wt", encoding="utf-8") as stream:
+                stream.write(source)
+            result = app.test_cli_runner().invoke(args=["import-lucy", path])
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("no changes committed", result.output)
+        self.assertEqual(self.state["commits"], 0)
 
 
 if __name__ == "__main__":

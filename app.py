@@ -1,3 +1,5 @@
+import csv
+import gzip
 import json
 import logging
 import os
@@ -9,7 +11,7 @@ from flask import Flask, abort, flash, redirect, render_template, request, sessi
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
-from inventory import EQUIPMENT, parse_inventory, parse_item_data
+from inventory import EQUIPMENT, parse_inventory, parse_item_data, parse_lucy_items
 
 app = Flask(__name__)
 app.config.update(MAX_CONTENT_LENGTH=10 * 1024 * 1024,
@@ -39,6 +41,38 @@ def init_db():
     with connect() as connection:
         initialize(connection)
     click.echo("Database tables initialized.")
+
+
+@app.cli.command("import-lucy")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=str))
+def import_lucy(path):
+    """Import Lucy's item ID/name list (CSV or .gz)."""
+    try:
+        opener = gzip.open if path.lower().endswith(".gz") else open
+        with opener(path, "rt", encoding="utf-8-sig", newline="") as stream, connect() as connection:
+            with connection.cursor() as cursor:
+                batch = []
+                count = 0
+                for item in parse_lucy_items(stream):
+                    batch.append(item)
+                    if len(batch) == 1000:
+                        insert_lucy_batch(cursor, batch)
+                        count += len(batch)
+                        batch.clear()
+                if batch:
+                    insert_lucy_batch(cursor, batch)
+                    count += len(batch)
+            connection.commit()
+        click.echo(f"Imported {count} Lucy item references.")
+    except (OSError, EOFError, UnicodeError, ValueError, csv.Error, pymysql.MySQLError) as exc:
+        raise click.ClickException(f"Lucy import failed; no changes committed: {exc}") from exc
+
+
+def insert_lucy_batch(cursor, batch):
+    cursor.executemany(
+        "INSERT INTO lucy_items (item_id, name) VALUES (%s, %s) "
+        "ON DUPLICATE KEY UPDATE name=VALUES(name)", batch,
+    )
 
 
 def save_upload(upload):
@@ -138,15 +172,19 @@ def index():
 def item_detail(upload_id, row_index):
     try:
         data = dashboard(upload_id)
+        if data is None or row_index >= len(data["rows"]) or not data["rows"][row_index]["item_id"]:
+            abort(404)
+        row = data["rows"][row_index]
+        with connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT item_id, name FROM lucy_items WHERE item_id = %s", (row["item_id"],))
+                lucy = cursor.fetchone()
     except (pymysql.MySQLError, OSError, ValueError):
         app.logger.exception("Unable to load item details")
         return render_template("index.html", data=None, db_error=True), 503
-    if data is None or row_index >= len(data["rows"]) or not data["rows"][row_index]["item_id"]:
-        abort(404)
-    row = data["rows"][row_index]
     children = [child for child in data["rows"] if child["parent"] == row_index]
     parent = data["rows"][row["parent"]] if row["parent"] is not None else None
-    return render_template("item.html", data=data, row=row, children=children, parent=parent)
+    return render_template("item.html", data=data, row=row, children=children, parent=parent, lucy=lucy)
 
 
 @app.route("/upload", methods=["POST"])

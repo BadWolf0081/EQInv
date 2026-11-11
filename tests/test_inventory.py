@@ -1,7 +1,8 @@
 import json
 import unittest
 
-from inventory import parse_inventory, parse_item_data
+from inventory import parse_inventory, parse_item_data, parse_lucy_items
+import io
 
 
 EXPORT = (
@@ -19,6 +20,17 @@ EXPORT = (
 
 
 class InventoryTests(unittest.TestCase):
+    def test_lucy_reference_list(self):
+        text = 'id,name,lucylink\n123,"Sword, fine",http://lucy.allakhazam.com/item.html?id=123\n'
+        self.assertEqual(list(parse_lucy_items(io.StringIO(text))), [(123, "Sword, fine")])
+
+    def test_rejects_bad_lucy_lists(self):
+        for text in ['id,name\n1,A\n',
+                     'id,name,lucylink\n1,A,https://evil.example/item.html?id=1\n',
+                     'id,name,lucylink\n1,A,http://lucy.allakhazam.com/item.html?id=2\n',
+                     'id,name,lucylink\n']:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                list(parse_lucy_items(io.StringIO(text)))
     def test_duplicate_slots_and_nested_items(self):
         data = parse_inventory(EXPORT, "Example_Test-Inventory.txt")
         self.assertEqual((data["character"], data["server"]), ("Example", "Test"))

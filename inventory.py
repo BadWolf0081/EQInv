@@ -3,6 +3,7 @@ import io
 import json
 import re
 from pathlib import PurePath
+from urllib.parse import parse_qs, urlsplit
 
 EQUIPMENT = {
     "Charm", "Ear", "Head", "Face", "Neck", "Shoulders", "Arms", "Back",
@@ -11,6 +12,29 @@ EQUIPMENT = {
 }
 SLOT = re.compile(r"^(.*)-Slot([1-9][0-9]*)$")
 NUMBER = re.compile(r"^[0-9]+$")
+
+
+def parse_lucy_items(stream):
+    reader = csv.DictReader(stream)
+    if reader.fieldnames != ["id", "name", "lucylink"]:
+        raise ValueError("Expected Lucy item list header: id,name,lucylink.")
+    count = 0
+    for row in reader:
+        line = reader.line_num
+        if None in row or any(value is None for value in row.values()):
+            raise ValueError(f"Incorrect number of columns on line {line}.")
+        item_id, name, link = row["id"].strip(), row["name"].strip(), row["lucylink"].strip()
+        if not NUMBER.fullmatch(item_id) or not 0 < int(item_id) <= 4294967295 or not name:
+            raise ValueError(f"Invalid item ID or name on line {line}.")
+        url = urlsplit(link)
+        if (url.scheme not in ("http", "https") or url.netloc != "lucy.allakhazam.com"
+                or url.path != "/item.html" or url.fragment
+                or parse_qs(url.query, keep_blank_values=True) != {"id": [item_id]}):
+            raise ValueError(f"Invalid Lucy item link on line {line}.")
+        count += 1
+        yield int(item_id), name
+    if not count:
+        raise ValueError("Lucy item list contains no items.")
 
 
 def decode_upload(data):

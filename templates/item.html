@@ -30,6 +30,7 @@
       <p class="eyebrow">ITEM DETAILS · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}{% if data.upload.server_name %} · {{ data.upload.server_name }}{% endif %}</p>
       <h1>{{ row.name }}</h1>
       <p class="detail-context">Item #{{ row.item_id }} · {{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }} · Count {{ row.count }}{% if row.slots is not none %} · Export slots {{ row.slots }}{% endif %}</p>
+      {% if lucy %}<p class="detail-context"><a class="item-link" href="https://lucy.allakhazam.com/item.html?id={{ row.item_id }}" target="_blank" rel="noopener noreferrer">View {{ lucy.name }} on Lucy ↗</a> (opens an external site)</p>{% endif %}
       {% if parent and parent.item_id %}<p class="detail-context">Inside <a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=parent.index) }}">{{ parent.name }}</a></p>{% endif %}
       <section class="panel detail-panel" aria-labelledby="stats-title">
         <p class="eyebrow">CATALOG DATA</p>

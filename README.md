@@ -72,6 +72,19 @@ Every successful upload also adds each previously unseen nonzero item ID and its
 
 If upgrading an existing installation, activate the virtual environment and set the database environment variables above, then run `python -m flask --app app init-db` again before starting the app. It creates the `items` table and backfills it from all previously saved uploads, in upload order. Running it again is safe and does not replace existing entries.
 
+## Import Lucy item references
+
+Lucy offers an [item ID/name list](https://lucy.allakhazam.com/downloads.html). Download `itemlist.txt.gz` from that page to the Linux host and, with the virtual environment active and database variables set, run:
+
+```bash
+python -m flask --app app init-db
+python -m flask --app app import-lucy itemlist.txt.gz
+```
+
+An uncompressed `itemlist.txt` works too. Importing is transactional and can be repeated; it adds or updates IDs in a separate `lucy_items` reference table without altering your seen items or manually imported stats. IDs omitted from a subsequent list remain. The `init-db` command creates the reference table on existing installations.
+
+Item detail pages show a link to Lucy when that item ID appears in the imported list. The link opens Lucy in your browser; the app does not fetch or scrape the page or its images. The list contains only IDs, names, and links—not item images, stats, or augment types—so it cannot populate comparisons by itself. Use the manual item data import below for those values. Check the source's terms and obtain permission before redistributing its data.
+
 ## Import item data
 
 Upload a UTF-8 CSV using the item data form. `id` and `aug_types` headers are required; type numbers are separated by `|`. `ac`, `hp`, `mana`, and `endurance` must be whole numbers when provided. Any other columns are preserved and displayed as text for matching items. Blank values mean unknown. Example (illustrative values, not real item data):

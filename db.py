@@ -62,6 +62,12 @@ def initialize(connection):
                 first_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             ) CHARACTER SET utf8mb4
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lucy_items (
+                item_id INT UNSIGNED NOT NULL PRIMARY KEY,
+                name LONGTEXT NOT NULL
+            ) ENGINE=InnoDB CHARACTER SET utf8mb4
+        """)
 
         # Backfill previously saved uploads in order, preserving the first name seen.
         last_id = 0
