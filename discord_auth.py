@@ -86,15 +86,21 @@ def authorize_url(config, state):
 
 
 def identify(config, code):
-    token = api_json(API + "/oauth2/token", form={
-        "client_id": config["EQINV_DISCORD_CLIENT_ID"],
-        "client_secret": config["EQINV_DISCORD_CLIENT_SECRET"],
-        "grant_type": "authorization_code", "code": code,
-        "redirect_uri": config["EQINV_DISCORD_REDIRECT_URI"],
-    })
+    try:
+        token = api_json(API + "/oauth2/token", form={
+            "client_id": config["EQINV_DISCORD_CLIENT_ID"],
+            "client_secret": config["EQINV_DISCORD_CLIENT_SECRET"],
+            "grant_type": "authorization_code", "code": code,
+            "redirect_uri": config["EQINV_DISCORD_REDIRECT_URI"],
+        })
+    except DiscordError as exc:
+        raise DiscordError(f"OAuth token exchange: {exc}") from exc
     if not isinstance(token, dict) or not isinstance(token.get("access_token"), str):
-        raise DiscordError("Discord did not return an access token.")
-    user = api_json(API + "/users/@me", headers={"Authorization": "Bearer " + token["access_token"]})
+        raise DiscordError("OAuth token exchange: Discord did not return an access token.")
+    try:
+        user = api_json(API + "/users/@me", headers={"Authorization": "Bearer " + token["access_token"]})
+    except DiscordError as exc:
+        raise DiscordError(f"Discord user lookup: {exc}") from exc
     if (not isinstance(user, dict) or not isinstance(user.get("id"), str)
             or not user["id"].isascii() or not user["id"].isdigit() or len(user["id"]) > 20):
         raise DiscordError("Discord did not return a valid user ID.")
@@ -102,8 +108,11 @@ def identify(config, code):
 
 
 def is_authorized(config, user_id):
-    member = api_json(f"{API}/guilds/{config['EQINV_DISCORD_GUILD_ID']}/members/{user_id}",
-                      headers={"Authorization": "Bot " + config["EQINV_DISCORD_BOT_TOKEN"]})
+    try:
+        member = api_json(f"{API}/guilds/{config['EQINV_DISCORD_GUILD_ID']}/members/{user_id}",
+                          headers={"Authorization": "Bot " + config["EQINV_DISCORD_BOT_TOKEN"]})
+    except DiscordError as exc:
+        raise DiscordError(f"Discord server member lookup: {exc}") from exc
     if member is None:
         return False
     if not isinstance(member, dict) or not isinstance(member.get("roles"), list):

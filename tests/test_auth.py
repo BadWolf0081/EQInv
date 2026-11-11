@@ -165,6 +165,23 @@ class DiscordAuthTests(unittest.TestCase):
             with self.assertRaises(discord_auth.DiscordError):
                 discord_auth.is_authorized(CONFIG, "123")
 
+    def test_api_errors_identify_the_failing_stage_without_credentials(self):
+        error = discord_auth.DiscordError("Discord API request failed (HTTP 403).")
+        for responses, operation, label in (
+            ([error], lambda: discord_auth.identify(CONFIG, "private-code"), "OAuth token exchange"),
+            ([{"access_token": "private-token"}, error],
+             lambda: discord_auth.identify(CONFIG, "private-code"), "Discord user lookup"),
+            ([error], lambda: discord_auth.is_authorized(CONFIG, "123"), "Discord server member lookup"),
+        ):
+            with self.subTest(stage=label), patch("discord_auth.api_json", side_effect=responses):
+                with self.assertRaises(discord_auth.DiscordError) as raised:
+                    operation()
+                message = str(raised.exception)
+                self.assertIn(label, message)
+                self.assertIn("HTTP 403", message)
+                for secret in ("private-code", "private-token", "bot-secret", "client-secret"):
+                    self.assertNotIn(secret, message)
+
 
 if __name__ == "__main__":
     unittest.main()
