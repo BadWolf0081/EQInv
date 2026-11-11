@@ -41,8 +41,20 @@ This Augmentation fits in slot types: 3 (General: Spell Effect)
         text = ("Slot 1, Type 3 (General: Spell Effect)\nSlot 2, Type 5\n"
                 "Slot 3, Type 8\nAC: 505\n")
         stats, types = extract_candidates(text)
-        self.assertEqual(stats, {"ac": 505})
+        self.assertEqual(stats, {"ac": 505, "socket_1_type": 3, "socket_2_type": 5, "socket_3_type": 8})
         self.assertEqual(types, [])
+
+    def test_extract_equipment_sockets_from_green_pulse_ocr(self):
+        text = ("Green Pulse\nSlot 1, type 3 (General: Spell Effect): Stone of Judgment\n"
+                "sag| Slot2, type 5 (General: Multiple Slot):\n"
+                "#3 Slot, type 8 (General: Raid):\n")
+        self.assertEqual(extract_candidates(text), (
+            {"socket_1_type": 3, "socket_2_type": 5, "socket_3_type": 8}, []
+        ))
+
+    def test_socket_detection_does_not_guess_missing_or_conflicting_slots(self):
+        text = "Slot, type 8\nSlot 1, type 3\nSlot 1, type 5\nSlot 0, type 8\nSlot 2, type 256"
+        self.assertEqual(extract_candidates(text), ({}, []))
 
     def test_extract_compatible_slot_types_with_labels(self):
         examples = [
@@ -86,7 +98,7 @@ This Augmentation fits in slot types: 3 (General: Spell Effect)
         )
         self.assertEqual(types, [7, 8])
         self.assertEqual(stats, {"ac": 113, "str": "+22+16", "hp": 1600, "mana": 1600, "endurance": 1600})
-        self.assertEqual(extract_candidates("Slot 1, Type 8\nAC: unclear"), ({}, []))
+        self.assertEqual(extract_candidates("Slot 1, Type 8\nAC: unclear"), ({"socket_1_type": 8}, []))
 
     def test_distiller_class_extraction_requires_complete_classed_distiller(self):
         examples = [
@@ -107,7 +119,8 @@ This Augmentation fits in slot types: 3 (General: Spell Effect)
     def test_review_rejects_bad_values(self):
         for stats, types, raw in [('[]', '7', 'x'), ('{"ac":"42"}', '7', 'x'),
                                   ('{"ac":42}', '256', 'x'), ('{}', '', 'x'),
-                                  ('{"ac":42}', '7', '')]:
+                                  ('{"ac":42}', '7', ''), ('{"socket_1_type":"8"}', '', 'x'),
+                                  ('{"socket_1_type":0}', '', 'x'), ('{"socket_2_type":256}', '', 'x')]:
             with self.subTest(stats=stats, types=types, raw=raw), self.assertRaises(ValueError):
                 validate_review(stats, types, raw)
         stats, types = validate_review('{"ac":0,"str":"+3+4"}', '8|7|8', 'confirmed text')

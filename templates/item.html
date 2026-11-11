@@ -57,6 +57,12 @@
           <article class="gear-card{% if not child.item_id %} empty-gear{% endif %}">
             <p class="slot-name">{{ child.location }}</p>
             <h3>{% if child.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=child.index) }}">{{ child.name }}</a>{% else %}{{ child.name }}{% endif %}</h3>
+            {% if child.socket_type is not none %}
+              <p class="detail-context">Item socket type: {{ child.socket_type }}
+              {% if child.socket_match is sameas true %} · Exact type match
+              {% elif child.socket_match is sameas false %} · No exact type match; verify in game
+              {% elif child.item_id %} · Augment types unknown{% endif %}</p>
+            {% endif %}
             {% if child.item_id %}<span class="item-id">ITEM #{{ child.item_id }}</span>{{ item_stats(child) }}{% endif %}
           </article>
           {% endfor %}

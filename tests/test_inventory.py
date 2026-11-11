@@ -59,6 +59,13 @@ class InventoryTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaises(ValueError):
                 parse_item_data(data)
 
+    def test_import_numbered_socket_types(self):
+        rows = parse_item_data(b"id,aug_types,socket_1_type,socket_2_type\n1,,3,\n")
+        self.assertEqual(json.loads(rows[0][2]), {"socket_1_type": 3, "socket_2_type": ""})
+        for value in (b"0", b"256", b"bad"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                parse_item_data(b"id,aug_types,socket_1_type\n1,," + value + b"\n")
+
 
 if __name__ == "__main__":
     unittest.main()

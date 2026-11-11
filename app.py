@@ -14,8 +14,9 @@ from flask import Flask, Response, abort, flash, jsonify, redirect, render_templ
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
-from inventory import EQUIPMENT, parse_inventory, parse_item_data, parse_lucy_items
+from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
 from screenshot_ocr import extract_candidates, load_screenshot, recognize_screenshot, validate_review
+from socket_types import socket_type
 
 app = Flask(__name__)
 app.config.update(MAX_CONTENT_LENGTH=10 * 1024 * 1024,
@@ -190,6 +191,13 @@ def item_detail(upload_id, row_index):
         app.logger.exception("Unable to load item details")
         return render_template("index.html", data=None, db_error=True), 503
     children = [child for child in data["rows"] if child["parent"] == row_index]
+    parent_stats = row["catalog"]["stats"] if row["catalog"] else {}
+    for child in children:
+        match = SLOT.fullmatch(child["location"])
+        child["socket_type"] = socket_type(parent_stats, int(match.group(2))) if match else None
+        child["socket_match"] = None
+        if child["socket_type"] is not None and child["catalog"] and child["catalog"]["types"]:
+            child["socket_match"] = child["socket_type"] in child["catalog"]["types"]
     parent = data["rows"][row["parent"]] if row["parent"] is not None else None
     allakhazam_search = "https://everquest.allakhazam.com/db/search?" + urlencode({"q": row["name"]})
     return render_template("item.html", data=data, row=row, children=children, parent=parent,

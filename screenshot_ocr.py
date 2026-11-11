@@ -6,6 +6,8 @@ import warnings
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from socket_types import socket_number
+
 
 MAX_PIXELS = 20_000_000
 STAT_PATTERN = re.compile(
@@ -29,6 +31,10 @@ SKILL_PATTERN = re.compile(
 SIZE_PATTERN = re.compile(r"\bSize[ \t]*:[ \t]*([A-Za-z]+)\b", re.IGNORECASE)
 DISTILLER_PATTERN = re.compile(
     r"\bsolvent\s+Class\s+([IVXLCDM]+)\s+Augmentation\s+Distiller\b", re.IGNORECASE,
+)
+SOCKET_PATTERN = re.compile(
+    r"(?:\bSlot[ \t]*([0-9]+)|(?<!\w)#[ \t]*([0-9]+)[ \t]+Slot)"
+    r"[ \t]*,?[ \t]*type[ \t]+([0-9]+)\b", re.IGNORECASE,
 )
 FLAGS_PATTERN = re.compile(
     r"\b((?:Lore|No Trade|No Drop|Augmentation|Prestige|Attuneable|Heirloom)"
@@ -66,6 +72,15 @@ def extract_candidates(text):
     distiller = DISTILLER_PATTERN.search(text)
     if distiller:
         stats["distiller_class"] = distiller.group(1).upper()
+    sockets = {}
+    for match in SOCKET_PATTERN.finditer(text):
+        number = int(match.group(1) or match.group(2))
+        value = int(match.group(3))
+        if 1 <= number <= 255 and 1 <= value <= 255:
+            sockets.setdefault(number, set()).add(value)
+    for number, values in sockets.items():
+        if len(values) == 1:
+            stats[f"socket_{number}_type"] = values.pop()
     flags = FLAGS_PATTERN.search(text)
     if flags:
         stats["item_flags"] = flags.group(1).strip()
@@ -134,6 +149,9 @@ def validate_review(stats_text, types_text, raw_text):
             raise ValueError(f"Stat {key} must be a string or integer.")
         if key in ("ac", "hp", "mana", "endurance") and value != "" and not isinstance(value, int):
             raise ValueError(f"Stat {key} must be an integer or blank.")
+        if socket_number(key) is not None and value != "" and (
+                not isinstance(value, int) or not 1 <= value <= 255):
+            raise ValueError(f"Stat {key} must be an integer from 1 to 255 or blank.")
     types = []
     if types_text.strip():
         for value in re.split(r"[\s,|/]+", types_text.strip()):

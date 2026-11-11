@@ -374,6 +374,52 @@ class AppTests(unittest.TestCase):
             self.assertIn(b"7 / 8", self.client.get(saved.json["item_url"]).data)
         self.assertEqual(self.client.get("/items/999/screenshot").status_code, 404)
 
+    def test_equipment_socket_ocr_is_saved_and_compared_with_installed_augments(self):
+        inventory = (
+            b"Location\tName\tID\tCount\tSlots\n"
+            b"Range\tGreen Pulse\t175729\t1\t3\n"
+            b"Range-Slot1\tStone\t11\t1\t0\n"
+            b"Range-Slot2\tCandelabra\t12\t1\t0\n"
+            b"Range-Slot3\tCave Stone\t13\t1\t0\n"
+        )
+        self.client.post("/upload", data={
+            "csrf_token": self.token, "inventory": (io.BytesIO(inventory), "Example_Test-Inventory.txt")
+        })
+        self.client.post("/item-data", data={
+            "csrf_token": self.token,
+            "items": (io.BytesIO(b"id,aug_types\n11,3\n12,7|8\n"), "items.csv"),
+        })
+        image = io.BytesIO()
+        Image.new("RGB", (20, 10), "red").save(image, format="PNG")
+        png = image.getvalue()
+        text = ("Green Pulse\nSlot 1, type 3 (General: Spell Effect)\n"
+                "Slot2, type 5 (General: Multiple Slot)\n#3 Slot, type 8 (General: Raid)")
+        with patch("app.recognize_screenshot", return_value=(text, "png")):
+            recognized = self.client.post("/uploads/1/screenshots/recognize", data={
+                "csrf_token": self.token, "screenshot": (io.BytesIO(png), "crop.png")
+            })
+        self.assertEqual(recognized.json["stats"], {
+            "socket_1_type": 3, "socket_2_type": 5, "socket_3_type": 8
+        })
+        self.assertEqual(recognized.json["types"], [])
+        saved = self.client.post("/uploads/1/screenshots/save", data={
+            "csrf_token": self.token, "row_index": "0", "confirmed": "yes", "save_stats": "yes",
+            "stats_json": json.dumps(recognized.json["stats"]), "types": "", "raw_text": text,
+            "screenshot": (io.BytesIO(png), "crop.png"),
+        })
+        self.assertEqual(saved.status_code, 200)
+        stored = json.loads(self.state["items"][175729]["stats_json"])
+        self.assertEqual([stored[f"socket_{n}_type"] for n in (1, 2, 3)], [3, 5, 8])
+        self.assertEqual(json.loads(self.state["items"][175729]["aug_types_json"]), [])
+        page = self.client.get(saved.json["item_url"]).get_data(as_text=True)
+        self.assertIn("SOCKET 1 TYPE", page)
+        self.assertIn("Item socket type: 3", page)
+        self.assertIn("Exact type match", page)
+        self.assertIn("Item socket type: 5", page)
+        self.assertIn("No exact type match; verify in game", page)
+        self.assertIn("Item socket type: 8", page)
+        self.assertIn("Augment types unknown", page)
+
     def test_screenshot_save_requires_confirmation_and_preserves_catalog(self):
         self.client.post("/upload", data={
             "csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")

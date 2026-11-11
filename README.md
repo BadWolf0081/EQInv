@@ -108,6 +108,8 @@ Upload a UTF-8 CSV using the item data form. `id` and `aug_types` headers are re
 
 `aug_types` contains the slot types an augmentation **fits into**, not the types of sockets on an item. Screenshot review suggests these from the “This Augmentation fits in slot types” text; verify all suggested values. Confirmed types are stored in `item_data.aug_types_json` by item ID and shown on item details. Existing catalog records are not updated by screenshot imports.
 
+For an item that holds augments, its own numbered socket types are separate fields in `item_data.stats_json`: `socket_1_type`, `socket_2_type`, and so on. OCR suggests these from lines such as `Slot 1, type 3`; verify the slot numbers and types, and add or correct them in the review JSON. CSV imports can use the same column names; values must be integers from 1 to 255 or blank. Item details show known socket types and compare them with the compatible types of direct child augments from the inventory. An exact number match is shown as such; a nonmatch is not a definitive compatibility judgment and should be checked in game. Missing information is unknown.
+
 ```csv
 id,aug_types,ac,hp,mana,source
 12345,7|8,42,120,100,manual

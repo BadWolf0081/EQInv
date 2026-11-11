@@ -5,6 +5,8 @@ import re
 from pathlib import PurePath
 from urllib.parse import parse_qs, urlsplit
 
+from socket_types import socket_number
+
 EQUIPMENT = {
     "Charm", "Ear", "Head", "Face", "Neck", "Shoulders", "Arms", "Back",
     "Wrist", "Range", "Hands", "Primary", "Secondary", "Fingers", "Chest",
@@ -140,6 +142,11 @@ def parse_item_data(data):
                     row[key] = int(row[key])
                 except ValueError as exc:
                     raise ValueError(f"Invalid {key} on CSV line {line}; use a whole number.") from exc
+        for key, value in row.items():
+            if socket_number(key) is not None and value:
+                if not NUMBER.fullmatch(value) or not 1 <= int(value) <= 255:
+                    raise ValueError(f"Invalid {key} on CSV line {line}; use a number from 1 to 255.")
+                row[key] = int(value)
         result.append((item_id, json.dumps(sorted(set(types))), json.dumps(row, ensure_ascii=False)))
     if not result:
         raise ValueError("Item data CSV contains no items.")
