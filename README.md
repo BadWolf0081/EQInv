@@ -56,11 +56,11 @@ python -m flask --app app init-db
 python app.py
 ```
 
-Open `http://127.0.0.1:5000` in a browser on the Linux host. The environment variables and virtual environment activation apply only to the current shell; set them again before restarting. Optionally set `EQINV_SECRET_KEY` to a persistent, long random secret to keep flash messages valid across restarts. Keep secrets out of the repository and shell history.
+Open `http://127.0.0.1:5000` in a browser on the Linux host, or `http://<linux-host-ip>:5000` from another computer on your trusted network. Use the host's actual IP address, not `0.0.0.0`. Network and firewall rules must permit access to port 5000. The environment variables and virtual environment activation apply only to the current shell; set them again before restarting. Optionally set `EQINV_SECRET_KEY` to a persistent, long random secret to keep flash messages valid across restarts. Keep secrets out of the repository and shell history.
 
 If the Linux host is remote, connect from your own computer using SSH port forwarding: `ssh -L 5000:127.0.0.1:5000 user@linux-host`. Leave that connection open and visit `http://127.0.0.1:5000` on your computer. Replace `user@linux-host` with your SSH destination. The inventory file can remain on the computer running the browser; select it in the upload form.
 
-The development server binds to localhost and has **no authentication**. Do not expose it to the internet or an untrusted network. It saves uploaded inventory contents and filenames in the configured database. The default 10 MB upload limit applies to both forms.
+The development server binds to **all IPv4 interfaces** (`0.0.0.0`) and has **no authentication or HTTPS**: anyone who can reach port 5000 can view the inventory and upload or replace item data. Restrict access to trusted devices using host and network firewall rules; do not expose it to the internet or an untrusted network. Flask's development server is not intended for production. The application saves uploaded inventory contents and filenames in the configured database. The default 10 MB upload limit applies to both forms.
 
 ## Import inventory
 
