@@ -9,7 +9,7 @@
   <script src="{{ url_for('static', filename='screenshots.js') }}" defer></script>
 </head>
 <body><div class="page"><main class="item-detail">
-  <a class="item-link back-link" href="{{ url_for('index') }}">← Back to inventory</a>
+  <a class="item-link back-link" href="{{ url_for('index', profile=upload_id) }}">← Back to inventory</a>
   <p class="eyebrow">SCREENSHOT IMPORT</p>
   <h1>Import item windows</h1>
   <p class="detail-context">Choose one screenshot, then draw a rectangle around a single complete item window. Recognize, verify, and save that item; repeat for each other window without choosing the file again. Crops are saved on the server and visible to anyone with access to this site.</p>

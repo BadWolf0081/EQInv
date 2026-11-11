@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import secrets
+import time
+from datetime import timedelta
 from urllib.parse import urlencode
 
 import click
@@ -13,12 +15,15 @@ import pymysql
 from flask import Flask, Response, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from db import catalog_items, connect, initialize
+from db import connect, initialize
+from config import get_setting
+import discord_auth
+import profiles
 from augment_preview import augment_summary, numeric_stat
 from augment_list import NON_AUGMENT_ITEM_IDS, STAT_KEYS, collect_augments, filter_sort_augments
 from base_stats import calculate_base
 from icon_detection import automatic_icon
-from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
+from inventory import EQUIPMENT, SLOT, parse_item_data, parse_lucy_items
 from item_matching import item_name_text, suggest_item_names
 from screenshot_ocr import extract_candidates, load_screenshot, recognize_screenshot, validate_review
 from screenshot_updates import confirmation_token, describe_changes, stat_count, update_decision
@@ -26,8 +31,12 @@ from socket_types import socket_type
 
 app = Flask(__name__)
 app.config.update(MAX_CONTENT_LENGTH=10 * 1024 * 1024,
-                  SECRET_KEY=os.environ.get("EQINV_SECRET_KEY", os.urandom(32)))
+                  SECRET_KEY=get_setting("EQINV_SECRET_KEY") or os.urandom(32),
+                  SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  SESSION_COOKIE_SECURE=get_setting("EQINV_DISCORD_REDIRECT_URI").lower().startswith("https://"),
+                  PERMANENT_SESSION_LIFETIME=timedelta(hours=12))
 logging.basicConfig(level=logging.INFO)
+ROLE_RECHECK_SECONDS = 30
 
 PAPERDOLL_LAYOUT = (
     ("Ear", 1, 1, 1), ("Head", 1, 2, 1), ("Face", 1, 3, 1), ("Ear", 2, 4, 1),
@@ -55,6 +64,102 @@ def protect_forms():
         supplied = request.form.get("csrf_token", "")
         if not expected or not secrets.compare_digest(expected, supplied):
             abort(400, "Invalid form token. Reload the page and try again.")
+
+
+@app.before_request
+def require_discord():
+    if request.endpoint in ("static", "discord_login", "discord_callback"):
+        return None
+    try:
+        config = discord_auth.settings()
+        if app.secret_key != config["EQINV_SECRET_KEY"]:
+            raise discord_auth.DiscordError("The configured session secret changed; restart the application.")
+        user_id = session.get("discord_id")
+        if not user_id:
+            if request.endpoint == "index" and request.method == "GET":
+                return render_template("login.html")
+            return redirect(url_for("index"))
+        if not isinstance(user_id, str) or not user_id.isascii() or not user_id.isdigit() or len(user_id) > 20:
+            session.clear()
+            return redirect(url_for("index"))
+        checked_at = session.get("role_checked_at")
+        age = time.time() - checked_at if isinstance(checked_at, (int, float)) else ROLE_RECHECK_SECONDS
+        if not 0 <= age < ROLE_RECHECK_SECONDS:
+            if not discord_auth.is_authorized(config, user_id):
+                session.clear()
+                return "Your Discord account is not a member with the required role.", 403
+            session["role_checked_at"] = time.time()
+        upload_id = (request.view_args or {}).get("upload_id")
+        if upload_id is not None and not profiles.owns_upload(user_id, upload_id):
+            abort(404)
+    except discord_auth.DiscordError as exc:
+        app.logger.error("Discord authorization unavailable: %s", exc)
+        return "Discord authorization unavailable. Check the server configuration and logs.", 503
+    except (pymysql.MySQLError, OSError):
+        app.logger.exception("Unable to check profile ownership")
+        return "Unable to verify profile access. Check the server logs.", 503
+
+
+@app.route("/auth/discord")
+def discord_login():
+    try:
+        config = discord_auth.settings()
+        if app.secret_key != config["EQINV_SECRET_KEY"]:
+            raise discord_auth.DiscordError("The configured session secret changed; restart the application.")
+        session.clear()
+        state = secrets.token_urlsafe(32)
+        session["oauth_state"] = state
+        return redirect(discord_auth.authorize_url(config, state))
+    except discord_auth.DiscordError as exc:
+        app.logger.error("Discord login unavailable: %s", exc)
+        return "Discord login unavailable. Check the server configuration and logs.", 503
+
+
+@app.route("/auth/discord/callback")
+def discord_callback():
+    expected = session.pop("oauth_state", "")
+    supplied = request.args.get("state", "")
+    if not expected or not supplied.isascii() or not secrets.compare_digest(expected, supplied):
+        return "Invalid or expired Discord login state. Start again.", 400
+    if request.args.get("error"):
+        return "Discord login was not authorized.", 403
+    code = request.args.get("code", "")
+    if not code or len(code) > 1024:
+        return "Discord did not provide a valid authorization code.", 400
+    try:
+        config = discord_auth.settings()
+        if app.secret_key != config["EQINV_SECRET_KEY"]:
+            raise discord_auth.DiscordError("The configured session secret changed; restart the application.")
+        user_id = discord_auth.identify(config, code)
+        if not discord_auth.is_authorized(config, user_id):
+            return "Your Discord account is not a member with the required role.", 403
+        session.clear()
+        session.permanent = True
+        session["discord_id"] = user_id
+        session["role_checked_at"] = time.time()
+        return redirect(url_for("index"))
+    except discord_auth.DiscordError as exc:
+        app.logger.error("Discord login failed: %s", exc)
+        return "Discord login failed. Check the server logs.", 503
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+
+@app.cli.command("claim-legacy")
+@click.argument("discord_id")
+def claim_legacy(discord_id):
+    """Assign unowned inventories to a Discord account."""
+    if not discord_id.isascii() or not discord_id.isdigit() or len(discord_id) > 20:
+        raise click.ClickException("Provide a valid numeric Discord user ID.")
+    try:
+        uploads, count = profiles.claim_legacy(discord_id)
+        click.echo(f"Claimed {uploads} uploads across {count} character profiles.")
+    except (ValueError, pymysql.MySQLError, OSError) as exc:
+        raise click.ClickException(f"Legacy claim failed; no data was claimed: {exc}") from exc
 
 
 @app.cli.command("init-db")
@@ -95,22 +200,6 @@ def insert_lucy_batch(cursor, batch):
         "INSERT INTO lucy_items (item_id, name) VALUES (%s, %s) "
         "ON DUPLICATE KEY UPDATE name=VALUES(name)", batch,
     )
-
-
-def save_upload(upload):
-    parsed = parse_inventory(upload.read(), upload.filename)
-    if len(parsed["filename"]) > 255:
-        raise ValueError("Filename is too long.")
-    with connect() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO uploads (filename, character_name, server_name, raw_text, rows_json) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (parsed["filename"], parsed["character"], parsed["server"], parsed["raw"],
-                 json.dumps(parsed["rows"], ensure_ascii=False)),
-            )
-            catalog_items(cursor, parsed["rows"])
-        connection.commit()
 
 
 def save_items(upload):
@@ -271,11 +360,21 @@ def augment_list(upload_id):
 @app.route("/", methods=["GET"])
 def index():
     try:
-        data = dashboard()
+        available = profiles.list_profiles(session["discord_id"])
+        selected = request.args.get("profile", "")
+        if selected and (not selected.isascii() or not selected.isdigit() or len(selected) > 20):
+            return "Invalid profile reference.", 400
+        if selected:
+            selected_id = int(selected)
+            if not any(profile["upload_id"] == selected_id for profile in available):
+                abort(404)
+        else:
+            selected_id = available[0]["upload_id"] if available else None
+        data = dashboard(selected_id) if selected_id is not None else None
     except (pymysql.MySQLError, OSError, ValueError):
         app.logger.exception("Unable to load inventory")
         return render_template("index.html", data=None, db_error=True), 503
-    return render_template("index.html", data=data, db_error=False)
+    return render_template("index.html", data=data, db_error=False, profiles=available)
 
 
 @app.route("/uploads/<int:upload_id>/items/<int:row_index>")
@@ -672,8 +771,9 @@ def upload_inventory():
         flash("Choose an inventory text file first.", "error")
     else:
         try:
-            save_upload(upload)
-            flash("Inventory imported successfully.", "success")
+            upload_id = profiles.save_profile(upload, session["discord_id"])
+            flash("Character profile updated successfully.", "success")
+            return redirect(url_for("index", profile=upload_id))
         except ValueError as exc:
             flash(str(exc), "error")
         except (pymysql.MySQLError, OSError):

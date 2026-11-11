@@ -28,7 +28,7 @@
       <span class="masthead-note">A COMPANION FOR NORRATH</span>
     </header>
     <main class="item-detail">
-      <a class="item-link back-link" href="{{ url_for('index') }}">← Back to inventory</a>
+      <a class="item-link back-link" href="{{ url_for('index', profile=data.upload.id) }}">← Back to inventory</a>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
       {% endwith %}

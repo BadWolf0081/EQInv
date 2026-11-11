@@ -13,7 +13,7 @@
     <span class="masthead-note">A COMPANION FOR NORRATH</span>
   </header>
   <main class="item-detail">
-    <a class="item-link back-link" href="{{ url_for('index') }}">← Back to inventory</a>
+    <a class="item-link back-link" href="{{ url_for('index', profile=data.upload.id) }}">← Back to inventory</a>
     <p class="eyebrow">AUGMENT COMPARISON · {{ data.upload.character_name or 'UNKNOWN ADVENTURER' }}</p>
     <h1>Augments &amp; stats</h1>
     <p class="detail-context">Showing this inventory snapshot: installed augments and loose items with recorded compatible augment types. Loose augments without known types cannot be identified. Values are shared catalog data, not historical snapshots.</p>

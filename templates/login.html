@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Adventurer's Ledger</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><div class="page"><main><section class="hero">
+  <p class="eyebrow">THE ADVENTURER'S LEDGER</p>
+  <h1>Your inventory, <em>accounted for.</em></h1>
+  <p class="hero-copy">Sign in with Discord to view your private character profiles. Membership in the configured server and role is required.</p>
+  <a class="item-link" href="{{ url_for('discord_login') }}">Log in with Discord →</a>
+</section></main></div></body></html>

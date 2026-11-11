@@ -12,6 +12,7 @@ import pymysql
 from PIL import Image
 
 from app import app, dashboard
+from db import catalog_items
 from inventory import parse_inventory
 from test_inventory import EXPORT
 from test_icon_detection import item_window
@@ -132,10 +133,36 @@ class AppTests(unittest.TestCase):
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
         app.config.update(TESTING=True, SECRET_KEY="test")
+        for target, replacement in (
+            ("app.discord_auth.settings", lambda: {"EQINV_SECRET_KEY": "test"}),
+            ("app.discord_auth.is_authorized", lambda config, user_id: True),
+            ("app.profiles.owns_upload", lambda user_id, upload_id: any(u["id"] == upload_id for u in self.state["uploads"])),
+            ("app.profiles.list_profiles", lambda user_id: [
+                {"character_name": u["character_name"], "server_name": u["server_name"], "upload_id": u["id"]}
+                for u in reversed(self.state["uploads"])]),
+            ("app.profiles.save_profile", self.save_test_profile),
+        ):
+            patcher = patch(target, side_effect=replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.client = app.test_client()
+        with self.client.session_transaction() as session:
+            session["discord_id"] = "1"
         self.client.get("/")
         with self.client.session_transaction() as session:
             self.token = session["csrf_token"]
+
+    def save_test_profile(self, upload, user_id):
+        parsed = parse_inventory(upload.read(), upload.filename)
+        with Connection(self.state) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO uploads (filename, character_name, server_name, raw_text, rows_json) VALUES (%s, %s, %s, %s, %s)",
+                    (parsed["filename"], parsed["character"], parsed["server"], parsed["raw"],
+                     json.dumps(parsed["rows"], ensure_ascii=False)))
+                catalog_items(cursor, parsed["rows"])
+            connection.commit()
+        return self.state["uploads"][-1]["id"]
 
     def test_upload_and_item_enrichment(self):
         response = self.client.post("/upload", data={"csrf_token": self.token, "inventory": (io.BytesIO(EXPORT), "Example_Test-Inventory.txt")},
@@ -532,6 +559,7 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"Unknown", table)
 
     def test_database_failure_is_visible(self):
+        self.state["uploads"].append({"id": 1, "character_name": "A", "server_name": "B"})
         with patch("app.connect", side_effect=OSError("database unavailable")):
             response = self.client.get("/")
         self.assertEqual(response.status_code, 503)

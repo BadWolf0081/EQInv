@@ -1,8 +1,8 @@
 import json
-import os
-
 import pymysql
 from pymysql.cursors import DictCursor
+
+from config import get_setting
 
 
 def catalog_items(cursor, rows):
@@ -21,11 +21,11 @@ def catalog_items(cursor, rows):
 
 def connect():
     return pymysql.connect(
-        host=os.environ.get("EQINV_DB_HOST", "127.0.0.1"),
-        port=int(os.environ.get("EQINV_DB_PORT", "3306")),
-        user=os.environ.get("EQINV_DB_USER", "eqinv"),
-        password=os.environ.get("EQINV_DB_PASSWORD", ""),
-        database=os.environ.get("EQINV_DB_NAME", "eqinv"),
+        host=get_setting("EQINV_DB_HOST", "127.0.0.1"),
+        port=int(get_setting("EQINV_DB_PORT", "3306")),
+        user=get_setting("EQINV_DB_USER", "eqinv"),
+        password=get_setting("EQINV_DB_PASSWORD"),
+        database=get_setting("EQINV_DB_NAME", "eqinv"),
         charset="utf8mb4",
         cursorclass=DictCursor,
         autocommit=False,
@@ -45,7 +45,30 @@ def initialize(connection):
                 uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 raw_text LONGTEXT NOT NULL,
                 rows_json LONGTEXT NOT NULL
-            ) CHARACTER SET utf8mb4
+            ) ENGINE=InnoDB CHARACTER SET utf8mb4
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS discord_accounts (
+                discord_id VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY
+            ) ENGINE=InnoDB
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS upload_owners (
+                upload_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+                discord_id VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                INDEX (discord_id, upload_id)
+            ) ENGINE=InnoDB
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS character_profiles (
+                discord_id VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                identity_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                character_name VARCHAR(255) NOT NULL,
+                server_name VARCHAR(255) NOT NULL,
+                upload_id BIGINT UNSIGNED NOT NULL,
+                PRIMARY KEY (discord_id, identity_hash),
+                UNIQUE KEY (upload_id)
+            ) ENGINE=InnoDB CHARACTER SET utf8mb4
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS item_data (
@@ -53,14 +76,14 @@ def initialize(connection):
                 aug_types_json TEXT NOT NULL,
                 stats_json LONGTEXT NOT NULL,
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) CHARACTER SET utf8mb4
+            ) ENGINE=InnoDB CHARACTER SET utf8mb4
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS items (
                 item_id INT UNSIGNED NOT NULL PRIMARY KEY,
                 name LONGTEXT NOT NULL,
                 first_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            ) CHARACTER SET utf8mb4
+            ) ENGINE=InnoDB CHARACTER SET utf8mb4
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS lucy_items (

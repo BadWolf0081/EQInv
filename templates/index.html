@@ -26,6 +26,7 @@
           <button type="submit">Import inventory <span>→</span></button>
         </form>
         <p class="hint">In game, run <code>/outputfile inventory</code> and choose the resulting text file.</p>
+        <p class="hint">Character profiles are private. Item stats, screenshots and icons are shared with all authorized users; screenshots may contain personal or character information.</p>
       </section>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -34,6 +35,13 @@
       {% if db_error %}
         <div class="notice error" role="alert">Cannot connect to the database or read its tables. Configure MariaDB and run <code>flask --app app init-db</code>; see the README. Check the server logs for details.</div>
       {% endif %}
+      <section class="summary">
+        <div><p class="eyebrow">YOUR PRIVATE PROFILES</p><p>{{ profiles|length }} / 10 characters</p>
+        {% if profiles %}<form method="get" action="{{ url_for('index') }}"><label>Character
+          <select name="profile">{% for profile in profiles %}<option value="{{ profile.upload_id }}" {% if data and profile.upload_id == data.upload.id %}selected{% endif %}>{{ profile.character_name }} · {{ profile.server_name }}</option>{% endfor %}</select>
+        </label><button type="submit">Open profile</button></form>{% endif %}</div>
+        <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="secondary">Log out</button></form>
+      </section>
 
       {% if data %}
       <section class="summary">
