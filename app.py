@@ -14,6 +14,7 @@ from flask import Flask, Response, abort, flash, jsonify, redirect, render_templ
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from db import catalog_items, connect, initialize
+from augment_preview import augment_summary
 from icon_detection import automatic_icon
 from inventory import EQUIPMENT, SLOT, parse_inventory, parse_item_data, parse_lucy_items
 from item_matching import suggest_item_names
@@ -164,6 +165,24 @@ def dashboard(upload_id=None):
             equipment.append({"index": index, "row": row, "augments": [], "number": counts[row["location"]]})
         elif equipment and row["parent"] == equipment[-1]["index"]:
             equipment[-1]["augments"].append(row)
+    for gear in equipment:
+        gear["row"]["preview_augments"] = [
+            {"row": aug, "summary": augment_summary(aug["catalog"])}
+            for aug in gear["augments"] if aug["item_id"]
+        ]
+        gear["row"]["preview_has_slots"] = bool(gear["augments"])
+    for child in rows:
+        if child["parent"] is None or not child["item_id"]:
+            continue
+        parent = rows[child["parent"]]
+        if "preview_augments" in parent and parent["parent"] is None and parent["location"] in EQUIPMENT:
+            continue
+        match = SLOT.fullmatch(child["location"])
+        if (parent["item_id"] and parent["catalog"] and match
+                and socket_type(parent["catalog"]["stats"], int(match.group(2))) is not None):
+            parent.setdefault("preview_augments", []).append(
+                {"row": child, "summary": augment_summary(child["catalog"])})
+            parent["preview_has_slots"] = True
     augments = []
     unknown_types = 0
     for gear in equipment:

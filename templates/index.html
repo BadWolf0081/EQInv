@@ -69,7 +69,7 @@
         <div class="gear-grid">
           {% for gear in data.equipment %}
           <article class="gear-card{% if not gear.row.item_id %} empty-gear{% endif %}">
-            <div class="gear-top">{% if gear.row.has_icon or gear.row.has_screenshot %}{{ item_icon(gear.row, 'gear') }}{% else %}<span class="slot-icon" aria-hidden="true">✧</span>{% endif %}<div><div class="slot-name">{{ gear.row.location }}{% if gear.row.location in ['Ear', 'Wrist', 'Fingers'] %} {{ gear.number }}{% endif %}</div><h3>{% if gear.row.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=gear.row.index) }}">{{ gear.row.name }}</a>{% else %}{{ gear.row.name }}{% endif %}</h3>{% if gear.row.item_id %}<span class="item-id">ITEM #{{ gear.row.item_id }}</span>{% endif %}</div></div>
+            <div class="gear-top">{% if gear.row.has_icon or gear.row.has_screenshot %}{{ item_icon(gear.row, 'gear') }}{% else %}<span class="slot-icon" aria-hidden="true">✧</span>{% endif %}<div><div class="slot-name">{{ gear.row.location }}{% if gear.row.location in ['Ear', 'Wrist', 'Fingers'] %} {{ gear.number }}{% endif %}</div><h3>{% if gear.row.item_id %}<a class="item-link" data-augment-preview="{{ gear.row.index }}" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=gear.row.index) }}">{{ gear.row.name }}</a>{% else %}{{ gear.row.name }}{% endif %}</h3>{% if gear.row.item_id %}<span class="item-id">ITEM #{{ gear.row.item_id }}</span>{% endif %}</div></div>
             {% if gear.row.catalog and gear.row.catalog.stats %}<div class="gear-stats">{% for key, value in gear.row.catalog.stats.items() if value != '' and key != 'ocr_text' %}<span>{{ key|upper }} {{ value }}</span>{% endfor %}</div>{% endif %}
             {% if gear.augments %}
             <ul class="aug-list">
@@ -96,9 +96,10 @@
       <section aria-labelledby="inventory-title">
         <div class="section-heading"><div><p class="eyebrow">THE FULL COLLECTION</p><h2 id="inventory-title">Inventory &amp; keyring</h2></div><label class="search-label">Search <input id="inventory-search" type="search" placeholder="Item, location, or ID…" autocomplete="off"></label></div>
         <div class="panel table-wrap inventory-table"><table><thead><tr><th>Location</th><th>Item</th><th>ID</th><th>Count</th><th>Slots</th><th>Imported stats</th></tr></thead><tbody id="inventory-rows">
-          {% for row in data.rows if row.item_id %}<tr><td>{{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }}</td><td>{{ item_icon(row) }}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=row.index) }}">{{ row.name }}</a></td><td>{{ row.item_id }}</td><td>{{ row.count }}</td><td>{{ row.slots if row.slots is not none else '—' }}</td><td>{% if row.catalog %}{% for key, value in row.catalog.stats.items() if value != '' and key != 'ocr_text' %}<span class="stat">{{ key|upper }} {{ value }}</span> {% else %}<span class="muted">—</span>{% endfor %}{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}
+          {% for row in data.rows if row.item_id %}<tr><td>{{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }}</td><td>{{ item_icon(row) }}<a class="item-link" {% if row.preview_augments is defined %}data-augment-preview="{{ row.index }}"{% endif %} href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=row.index) }}">{{ row.name }}</a></td><td>{{ row.item_id }}</td><td>{{ row.count }}</td><td>{{ row.slots if row.slots is not none else '—' }}</td><td>{% if row.catalog %}{% for key, value in row.catalog.stats.items() if value != '' and key != 'ocr_text' %}<span class="stat">{{ key|upper }} {{ value }}</span> {% else %}<span class="muted">—</span>{% endfor %}{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}
         </tbody></table><p id="no-results" class="panel-foot" hidden>No matching items.</p></div>
       </section>
+      {% set preview_rows = data.rows %}{% include '_augment_previews.html' %}
       {% endif %}
       <div class="rule"><span>✦</span></div>
       <section class="catalog" aria-labelledby="catalog-title">

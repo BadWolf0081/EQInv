@@ -220,6 +220,40 @@ class AppTests(unittest.TestCase):
         self.state["screenshots"][2] = [invalid.getvalue()]
         self.assertEqual(self.client.get("/items/2/icon").status_code, 404)
 
+    def test_augment_previews_preserve_parent_identity_and_exclude_bag_contents(self):
+        parsed = parse_inventory(EXPORT, "Example_Test-Inventory.txt")
+        self.state["uploads"].append({"id": 1, "filename": parsed["filename"], "character_name": parsed["character"],
+                                      "server_name": parsed["server"], "uploaded_at": "2026-01-01",
+                                      "rows_json": json.dumps(parsed["rows"])})
+        self.state["items"][11] = {"item_id": 11, "aug_types_json": "[7]",
+                                   "stats_json": '{"hp": 100, "mana": 0}'}
+        self.state["items"][12] = {"item_id": 12, "aug_types_json": "[8]",
+                                   "stats_json": '{"heroic_str": "20", "heroic_int": 20}'}
+        self.state["items"][13] = {"item_id": 13, "aug_types_json": "[7]",
+                                   "stats_json": '{"hp": 200}'}
+        self.state["items"][4] = {"item_id": 4, "aug_types_json": "[]",
+                                  "stats_json": '{"socket_1_type": 7}'}
+        self.state["icons"][11] = b"icon"
+        data = dashboard()
+        self.assertEqual([entry["row"]["item_id"] for entry in data["rows"][0]["preview_augments"]], [11])
+        self.assertEqual([entry["row"]["item_id"] for entry in data["rows"][2]["preview_augments"]], [12])
+        self.assertNotIn("preview_augments", data["rows"][4])
+        self.assertEqual([entry["row"]["item_id"] for entry in data["rows"][5]["preview_augments"]], [13])
+        page = self.client.get("/").get_data(as_text=True)
+        first = page.split('<template id="augment-preview-0">')[1].split('</template>')[0]
+        second = page.split('<template id="augment-preview-2">')[1].split('</template>')[0]
+        self.assertIn("First aug", first)
+        self.assertNotIn("Second aug", first)
+        self.assertIn('src="/items/11/icon"', first)
+        self.assertIn("HP 100", first)
+        self.assertIn("Mana 0", first)
+        self.assertIn("Second aug", second)
+        self.assertIn("Heroic STR / INT +20", second)
+        self.assertIn("HP/Mana incomplete", second)
+        self.assertNotIn('<template id="augment-preview-4">', page)
+        self.assertIn('<template id="augment-preview-5">', page)
+        self.assertIn('data-augment-preview="0"', page)
+
     def test_rejects_malformed_upload_without_database_write(self):
         response = self.client.post("/upload", data={"csrf_token": self.token, "inventory": (io.BytesIO(b"invalid"), "bad.txt")},
                                     follow_redirects=True)
@@ -606,7 +640,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(decoded.size, (5, 6))
         self.assertEqual(decoded.getpixel((0, 0)), (0, 0, 255))
         page = self.client.get("/").get_data(as_text=True)
-        self.assertEqual(page.count('src="/items/11/icon"'), 3)
+        self.assertEqual(page.count('src="/items/11/icon"'), 4)
         self.assertIn('src="/items/11/icon"', self.client.get("/uploads/1/items/0").get_data(as_text=True))
         self.assertEqual(self.client.get("/items/12/icon").status_code, 404)
 

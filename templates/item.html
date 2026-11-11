@@ -38,7 +38,7 @@
       <p class="detail-context">Item #{{ row.item_id }} · {{ 'Keyring · ' if row.section == 'keyring' else '' }}{{ row.location }} · Count {{ row.count }}{% if row.slots is not none %} · Export slots {{ row.slots }}{% endif %}</p>
       {% if lucy %}<p class="detail-context"><a class="item-link" href="https://lucy.allakhazam.com/item.html?id={{ row.item_id }}" target="_blank" rel="noopener noreferrer">View {{ lucy.name }} on Lucy ↗</a> (opens an external site)</p>{% endif %}
       <p class="detail-context"><a class="item-link" href="{{ allakhazam_search }}" target="_blank" rel="noopener noreferrer">Search Allakhazam for {{ row.name }} ↗</a> (opens an external site; check the item ID in the results)</p>
-      {% if parent and parent.item_id %}<p class="detail-context">Inside <a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=parent.index) }}">{{ parent.name }}</a></p>{% endif %}
+      {% if parent and parent.item_id %}<p class="detail-context">Inside <a class="item-link" {% if parent.preview_augments is defined %}data-augment-preview="{{ parent.index }}"{% endif %} href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=parent.index) }}">{{ parent.name }}</a></p>{% endif %}
       <section class="panel detail-panel" aria-labelledby="stats-title">
         <p class="eyebrow">CATALOG DATA</p>
         <h2 id="stats-title">Item stats</h2>
@@ -59,7 +59,7 @@
           {% for child in children %}
           <article class="gear-card{% if not child.item_id %} empty-gear{% endif %}">
             <p class="slot-name">{{ child.location }}</p>
-            <h3>{{ item_icon(child) }}{% if child.item_id %}<a class="item-link" href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=child.index) }}">{{ child.name }}</a>{% else %}{{ child.name }}{% endif %}</h3>
+            <h3>{{ item_icon(child) }}{% if child.item_id %}<a class="item-link" {% if child.preview_augments is defined %}data-augment-preview="{{ child.index }}"{% endif %} href="{{ url_for('item_detail', upload_id=data.upload.id, row_index=child.index) }}">{{ child.name }}</a>{% else %}{{ child.name }}{% endif %}</h3>
             {% if child.socket_type is not none %}
               <p class="detail-context">Item socket type: {{ child.socket_type }}
               {% if child.socket_match is sameas true %} · Exact type match
@@ -75,6 +75,7 @@
       <p class="detail-context">No child slots are listed for this item in the export.</p>
       {% endif %}
     </main>
+    {% set preview_rows = children + ([parent] if parent else []) %}{% include '_augment_previews.html' %}
     <footer><span>✦ &nbsp; THE ADVENTURER'S LEDGER</span><span>Unofficial fan-made companion · Your files stay on this server</span></footer>
   </div>
 </body>

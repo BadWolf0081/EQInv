@@ -24,6 +24,69 @@ if (search) {
   });
 }
 
+const augmentPreview = document.querySelector("#augment-preview");
+if (augmentPreview) {
+  let activeLink = null;
+  let closeTimer = null;
+
+  function hidePreview() {
+    clearTimeout(closeTimer);
+    if (activeLink) activeLink.removeAttribute("aria-describedby");
+    activeLink = null;
+    augmentPreview.hidden = true;
+  }
+
+  function positionPreview() {
+    if (!activeLink) return;
+    const anchor = activeLink.getBoundingClientRect();
+    const box = augmentPreview.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.max(margin, Math.min(anchor.left, window.innerWidth - box.width - margin));
+    const below = anchor.bottom + margin;
+    const top = below + box.height <= window.innerHeight - margin ? below :
+      Math.max(margin, anchor.top - box.height - margin);
+    augmentPreview.style.left = `${left}px`;
+    augmentPreview.style.top = `${top}px`;
+  }
+
+  function showPreview(link) {
+    clearTimeout(closeTimer);
+    const template = document.getElementById(`augment-preview-${link.dataset.augmentPreview}`);
+    if (!template) return;
+    if (activeLink && activeLink !== link) activeLink.removeAttribute("aria-describedby");
+    activeLink = link;
+    augmentPreview.replaceChildren(template.content.cloneNode(true));
+    augmentPreview.querySelectorAll("img").forEach(image => {
+      image.addEventListener("error", () => { image.hidden = true; });
+    });
+    augmentPreview.hidden = false;
+    link.setAttribute("aria-describedby", "augment-preview");
+    positionPreview();
+  }
+
+  function scheduleClose() {
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(hidePreview, 150);
+  }
+
+  document.querySelectorAll("[data-augment-preview]").forEach(link => {
+    link.addEventListener("mouseenter", () => showPreview(link));
+    link.addEventListener("focus", () => showPreview(link));
+    link.addEventListener("mouseleave", () => {
+      if (document.activeElement !== link) scheduleClose();
+    });
+    link.addEventListener("blur", scheduleClose);
+    link.addEventListener("click", hidePreview);
+  });
+  augmentPreview.addEventListener("mouseenter", () => clearTimeout(closeTimer));
+  augmentPreview.addEventListener("mouseleave", () => {
+    if (document.activeElement !== activeLink) scheduleClose();
+  });
+  document.addEventListener("keydown", event => { if (event.key === "Escape") hidePreview(); });
+  window.addEventListener("resize", positionPreview);
+  window.addEventListener("scroll", positionPreview, true);
+}
+
 const screenshotDialog = document.querySelector("#item-screenshot-dialog");
 if (screenshotDialog && typeof screenshotDialog.showModal === "function") {
   const image = document.querySelector("#item-screenshot-image");

@@ -1,0 +1,32 @@
+{% for preview_row in preview_rows if preview_row and preview_row.preview_augments is defined %}
+<template id="augment-preview-{{ preview_row.index }}">
+  <strong class="augment-preview-title">{{ preview_row.name }}</strong>
+  {% if preview_row.preview_augments %}
+    <span class="augment-preview-heading">Installed augments</span>
+    <ul class="augment-preview-list">
+      {% for entry in preview_row.preview_augments %}
+      <li>
+        <span class="augment-preview-icon">
+          {% if entry.row.has_icon or entry.row.has_screenshot %}<img src="{{ url_for('item_icon', item_id=entry.row.item_id) }}" alt="" loading="lazy">{% else %}<span aria-hidden="true">◇</span>{% endif %}
+        </span>
+        <span><strong>{{ entry.row.name }}</strong><br>
+          {% if (entry.summary.hp is not none and entry.summary.hp != 0) or (entry.summary.mana is not none and entry.summary.mana != 0) %}
+            HP {{ entry.summary.hp if entry.summary.hp is not none else 'Unknown' }} · Mana {{ entry.summary.mana if entry.summary.mana is not none else 'Unknown' }}
+          {% elif entry.summary.heroic_value is not none %}
+            Heroic {{ entry.summary.heroic|join(' / ') }} +{{ entry.summary.heroic_value }}
+            {% if entry.summary.hp is none or entry.summary.mana is none %}<small> · HP/Mana incomplete</small>{% endif %}
+          {% else %}
+            HP {{ entry.summary.hp if entry.summary.hp is not none else 'Unknown' }} · Mana {{ entry.summary.mana if entry.summary.mana is not none else 'Unknown' }} · No positive heroic stat known
+          {% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% elif preview_row.preview_has_slots %}
+    <span>No installed augments in the exported slots.</span>
+  {% else %}
+    <span>No augment slots listed in the export.</span>
+  {% endif %}
+</template>
+{% endfor %}
+<div id="augment-preview" class="augment-preview" role="tooltip" hidden></div>
